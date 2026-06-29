@@ -85,6 +85,23 @@ export async function GET(
           const endTime = new Date(
             now.getTime() + pkg.durationMinutes * 60 * 1000
           );
+
+          // Tag the session to a hotspot site: pick the first active site,
+          // or fall back to a random site if none are active.
+          let siteId: string | undefined;
+          const firstActive = await db.hotspotSite.findFirst({
+            where: { status: "active" },
+            select: { id: true },
+          });
+          if (firstActive) {
+            siteId = firstActive.id;
+          } else {
+            const anySite = await db.hotspotSite.findFirst({
+              select: { id: true },
+            });
+            if (anySite) siteId = anySite.id;
+          }
+
           const session = await db.session.create({
             data: {
               customerId: updatedTx.customerId,
@@ -102,6 +119,7 @@ export async function GET(
               macAddress: generateFakeMAC(),
               promoCode: updatedTx.promoCode ?? null,
               discountKES: updatedTx.discountKES ?? 0,
+              ...(siteId ? { siteId } : {}),
             },
           });
           sessionId = session.id;

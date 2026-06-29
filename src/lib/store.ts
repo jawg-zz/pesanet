@@ -15,6 +15,9 @@ export type AdminSection =
   | "tickets"
   | "reports"
   | "settings"
+  | "sites"
+  | "announcements"
+  | "feedback"
 
 interface AppState {
   view: AppView

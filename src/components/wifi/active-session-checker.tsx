@@ -119,6 +119,10 @@ export function ActiveSessionChecker({
               setSession(null)
               onSessionChange?.(null)
             }}
+            onExtended={(updated) => {
+              setSession(updated)
+              onSessionChange?.(updated)
+            }}
           />
         )}
 

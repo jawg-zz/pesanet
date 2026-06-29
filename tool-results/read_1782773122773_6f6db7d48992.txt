@@ -1,0 +1,274 @@
+     1→     1→# PesaNet WiFi Billing System — Worklog
+     2→     2→
+     3→     3→This file tracks all work performed by agents on the PesaNet project.
+     4→     4→
+     5→     5→---
+     6→     6→Task ID: 1
+     7→     7→Agent: main (orchestrator)
+     8→     8→Task: Set up project foundation — database schema, shared types, theme, seed data
+     9→     9→
+    10→    10→Work Log:
+    11→    11→- Designed Prisma schema with models: Package, Customer, Session, Voucher, Transaction, AdminUser (M-Pesa / voucher / KES oriented).
+    12→    12→- Wrote shared TypeScript types in `src/lib/types.ts` (WifiPackage, WifiSession, WifiVoucher, WifiTransaction, AdminStats, RevenuePoint, AdminCustomer).
+    13→    13→- Wrote helpers in `src/lib/wifi-utils.ts` (formatKES, formatDuration, formatData, timeAgo, timeRemaining, sessionProgress, validateKePhone, normaliseKePhone, generateVoucherCode, generateMpesaRef, generateFakeIP, generateFakeMAC).
+    14→    14→- Wrote Zustand store in `src/lib/store.ts` (view: customer|admin, adminAuthed, adminSection).
+    15→    15→- Updated `src/app/globals.css` with a green M-Pesa/Safaricom-inspired palette + custom scrollbar.
+    16→    16→- Updated `src/app/layout.tsx` with next-themes ThemeProvider and PesaNet metadata.
+    17→    17→- Ran `bun run db:push` — schema in sync.
+    18→    18→- Wrote `prisma/seed.ts` and ran it: 7 packages, 12 customers, 111 sessions (~KES 76,716 revenue), vouchers batch, admin user (username `admin`, password `admin123`).
+    19→    19→
+    20→    20→Stage Summary:
+    21→    21→- Foundation complete. DB seeded and ready.
+    22→    22→- API contract (shared types) is the single source of truth for backend + frontend agents.
+    23→    23→- Admin credentials: username `admin`, password `admin123`.
+    24→    24→- Theme is green (light default, dark supported).
+    25→    25→
+    26→    26→---
+    27→    27→Task ID: 2-a
+    28→    28→Agent: full-stack-developer (backend)
+    29→    29→Task: Build all PesaNet API route handlers (15+ routes) for packages, M-Pesa STK/status, vouchers (generate/list/redeem), sessions (list/active/disconnect), admin (stats/revenue/customers/login) and transactions.
+    30→    30→
+    31→    31→Work Log:
+    32→    32→- Read existing foundation (worklog.md, prisma/schema.prisma, src/lib/types.ts, src/lib/wifi-utils.ts, src/lib/db.ts).
+    33→    33→- Created directory tree under `src/app/api/**` for all 15 routes.
+    34→    34→- Implemented each route handler with `export const dynamic = "force-dynamic"`, try/catch, NextResponse.json, and proper 400/404/500 handling.
+    35→    35→- Mapped Prisma rows to the shared `WifiPackage`, `WifiSession`, `WifiVoucher`, `WifiTransaction`, `AdminStats`, `RevenuePoint`, `AdminCustomer` types in `src/lib/types.ts`.
+    36→    36→- Auto-expire logic (`db.session.updateMany` where status="active" AND endTime<now) wired into sessions GET, sessions/active GET, and admin/stats GET.
+    37→    37→- M-Pesa STK push: validates phone + active package, upserts Customer, creates pending Transaction.
+    38→    38→- M-Pesa status: simulates success after 4s elapsed — generates mpesaRef, completes Transaction, creates Session with fake IP/MAC.
+    39→    39→- Voucher generate: 1–100 codes per batch with DB-uniqueness retry loop, batchId = `BATCH-{timestamp}`.
+    40→    40→- Voucher redeem: validates phone, uppercases code, flips voucher to "used", creates completed Transaction + active Session with authMethod="voucher".
+    41→    41→- Sessions POST: upserts customer, creates session with package-derived endTime.
+    42→    42→- Admin stats: Africa/Nairobi (UTC+3) day boundary via `new Date(Date.now() + 3*3600*1000)` then `setUTCHours(0,0,0,0)`; sums today's session.priceKES across active/expired/disconnected; totalRevenue from completed transactions.
+    43→    43→- Admin revenue: builds N day-buckets (UTC+3), queries sessions once, aggregates revenue + count per day, returns oldest-first with "DD Mon" labels.
+    44→    44→- Admin customers: includes sessions, computes totalSpent, sessionCount, lastActive (max startTime), sorts by totalSpent desc.
+    45→    45→- Admin login: plain-text compare against `passwordHash` (demo), returns `{ success: true, name }` or 401.
+    46→    46→- Transactions GET: ordered by createdAt desc, default limit 100 (max 500 via `?limit=`).
+    47→    47→- Ran `bun run lint` — only remaining error is in `src/components/wifi/customer-portal.tsx` (frontend file, owned by frontend agent). All `src/app/api/**` files pass lint cleanly.
+    48→    48→
+    49→    49→Stage Summary:
+    50→    50→- Files created (15 route files):
+    51→    51→  - src/app/api/packages/route.ts (GET, POST)
+    52→    52→  - src/app/api/packages/[id]/route.ts (PUT, DELETE)
+    53→    53→  - src/app/api/mpesa/stk/route.ts (POST)
+    54→    54→  - src/app/api/mpesa/status/[id]/route.ts (GET)
+    55→    55→  - src/app/api/vouchers/generate/route.ts (POST)
+    56→    56→  - src/app/api/vouchers/route.ts (GET)
+    57→    57→  - src/app/api/vouchers/redeem/route.ts (POST)
+    58→    58→  - src/app/api/sessions/route.ts (GET, POST)
+    59→    59→  - src/app/api/sessions/active/route.ts (GET)
+    60→    60→  - src/app/api/sessions/[id]/route.ts (PATCH)
+    61→    61→  - src/app/api/admin/stats/route.ts (GET)
+    62→    62→  - src/app/api/admin/revenue/route.ts (GET)
+    63→    63→  - src/app/api/admin/customers/route.ts (GET)
+    64→    64→  - src/app/api/admin/login/route.ts (POST)
+    65→    65→  - src/app/api/transactions/route.ts (GET)
+    66→    66→- All routes honor the exact response contract in the task spec (shapes, status codes, error messages).
+    67→    67→- All files have `export const dynamic = "force-dynamic"` at the top.
+    68→    68→- No new packages installed. No modifications to types.ts, wifi-utils.ts, store.ts, schema.prisma, page.tsx, layout.tsx.
+    69→    69→- Lint status: `src/app/api/**` clean. The only outstanding lint error (`react-hooks/set-state-in-effect` in customer-portal.tsx) and current dev-server 500s (caused by missing `vouchers-manager`/`transactions-manager`/`customers-manager`/`packages-manager` modules referenced by `admin-dashboard.tsx`) are owned by the frontend agent (task 2-b). Once those files exist, the API routes will serve 200 responses.
+    70→    70→
+    71→    71→---
+    72→    72→Task ID: 2-b
+    73→    73→Agent: full-stack-developer (frontend)
+    74→    74→Task: Built the complete user-facing frontend for PesaNet — customer portal + admin dashboard on the single `src/app/page.tsx` route, consuming the documented API contract.
+    75→    75→
+    76→    76→Work Log:
+    77→    77→- Read foundation (types, store, wifi-utils, theme, layout, seed data) and confirmed API contract before coding.
+    78→    78→- Created `src/app/page.tsx` as the app shell: sticky header with PesaNet logo + segmented Customer/Admin view toggle, AnimatePresence-wrapped view switching, sticky footer (`mt-auto`) with M-Pesa mention.
+    79→    79→- Built Customer Portal (`src/components/wifi/customer-portal.tsx`): green gradient hero with phone-based session checker, packages grid (1/2/3 responsive cols), voucher redeem card, "how it works" 3-step section, FAQ accordion. Active session is surfaced inline when found.
+    80→    80→- Built `active-session-card.tsx`: live 1s countdown via `timeRemaining`, progress bar via `sessionProgress`, info tiles (data used, IP, MAC, phone, auth method, M-Pesa ref), disconnect button (PATCH session).
+    81→    81→- Built `package-card.tsx`: name, big KES price, duration/data/speed, Popular badge + ring highlight, Buy-with-M-Pesa button.
+    82→    82→- Built `mpesa-modal.tsx`: 3-step Dialog (form → waiting → success/failed). Phone mockup mimics the Safaricom STK prompt ("Lipa na M-Pesa", amount, paybill, PIN). Polls `/api/mpesa/status/[id]` every 1.5s; on success fetches resulting session and refreshes parent. Framer-motion step transitions + animated success check.
+    83→    83→- Built `voucher-redeem.tsx`: code + phone inputs, client-side validation with `validateKePhone`, success toast and inline active-session card.
+    84→    84→- Built Admin Dashboard shell (`admin-dashboard.tsx`): login gate (calls `/api/admin/login`), sticky sidebar on desktop with 6 nav items, Sheet sidebar on mobile, top bar with "Welcome, {adminName}" and logout. Sections render via the store's `adminSection`.
+    85→    85→- Built `admin/admin-login.tsx`: centered card with show/hide password, demo creds hint, toast on success/failure.
+    86→    86→- Built `admin/overview.tsx`: 4 stat cards (Active Sessions, Today's Revenue, Total Customers, Total Revenue) with icons, secondary mini-stats row, recharts AreaChart with green gradient for 7-day revenue, recent sessions list + recent transactions list.
+    87→    87→- Built `admin/sessions-manager.tsx`: Tabs filter (Active/Expired/Disconnected/All), search, table with phone/package/started/time-left/data/auth/status/actions, disconnect action, auto-refresh every 10s, max-h-[60vh] custom-scroll.
+    88→    88→- Built `admin/packages-manager.tsx`: card grid with edit/delete, Add-Package Dialog (name, price, duration, data, down/up Mbps, description, popular switch, active switch), AlertDialog delete confirm.
+    89→    89→- Built `admin/vouchers-manager.tsx`: status filter Tabs + search, Generate Vouchers Dialog (package select + count 1–100), generated codes list with copy-all + per-code copy, full voucher table.
+    90→    90→- Built `admin/transactions-manager.tsx`: search, totals summary, method badge (M-Pesa green / Voucher amber), status badge, time-ago, max-h scroll.
+    91→    91→- Built `admin/customers-manager.tsx`: top-3 customers highlight with crown, full customer table with avatars, sessions count, total spent, last active.
+    92→    92→- Created shared `status-badge.tsx` (green=active/unused/completed, amber=pending, red=failed, muted=expired/disconnected/used) used across all admin sections.
+    93→    93→- Ran `bun run lint` — passes with zero errors and zero warnings after fixing:
+    94→    94→  - `customer-portal.tsx`: removed synchronous `setLoading(true)` inside `useEffect` (react-hooks/set-state-in-effect).
+    95→    95→  - `vouchers-manager.tsx`: removed unused `eslint-disable` directive.
+    96→    96→- Smoke-tested all consumed endpoints against the live backend (`/api/packages`, `/api/admin/stats`, `/api/admin/revenue?days=7`, `/api/admin/customers`, `/api/sessions`, `/api/vouchers`, `/api/transactions`, `/api/admin/login`, `/api/mpesa/stk`, `/api/mpesa/status/[id]`) — all return 200 with the documented shapes; full M-Pesa STK push → completed → session created flow works end-to-end.
+    97→    97→- Adjusted overview chart's XAxis to use the raw `date` string from the API (e.g. "24 Jun") instead of `new Date(d)` parsing.
+    98→    98→
+    99→    99→Stage Summary:
+   100→   100→- Artifacts: 15 frontend files created (1 page + 14 components) — full list in `/home/z/my-project/agent-ctx/2-b-full-stack-developer-frontend.md`.
+   101→   101→- Single user-visible route `src/app/page.tsx` only. No API routes touched.
+   102→   102→- Files NOT modified (per instructions): `types.ts`, `wifi-utils.ts`, `store.ts`, `db.ts`, `schema.prisma`, `layout.tsx`, `globals.css`.
+   103→   103→- Lint: clean. Dev server: runs and serves `/` with 200, all API calls succeed.
+   104→   104→- UI: green M-Pesa theme, mobile-first responsive, sticky header + footer, framer-motion transitions, skeletons, empty states, toasts, custom scrollbars. Ready for end-user demo (admin creds `admin` / `admin123`).
+   105→   105→
+   106→   106→---
+   107→   107→Task ID: 3
+   108→   108→Agent: main (orchestrator)
+   109→   109→Task: End-to-end verification, timezone bug fix, finalisation
+   110→   110→
+   111→   111→Work Log:
+   112→   112→- Read both subagent worklog entries (2-a backend, 2-b frontend).
+   113→   113→- Ran `bun run lint` — clean (0 errors, 0 warnings).
+   114→   114→- Started Agent Browser verification on http://localhost:3000/.
+   115→   115→- Verified customer portal renders: hero, 7 packages, voucher redeem, FAQ, no console errors.
+   116→   116→- Verified M-Pesa STK push golden path: Buy Hourly Boost → enter 0712345678 → STK sent → ~4s wait → "You're now connected!" with M-Pesa ref L6J3FM0X2F → active session card appeared with live countdown + Disconnect.
+   117→   117→- Verified voucher redeem flow: code WFI-5513-4426 + phone 0712345679 → active session card (Daily Pro) appeared.
+   118→   118→- Verified admin login (admin/admin123) → dashboard with sidebar (Overview/Sessions/Packages/Vouchers/Transactions/Customers).
+   119→   119→- Found timezone bug: "Today's Revenue: KES 0" / "Sessions today: 0" despite sessions created minutes ago. Root cause: `new Date(Date.now()+3h).setUTCHours(0,0,0,0)` produced a future boundary when UTC hour >= 21 (Nairobi crosses midnight). 
+   120→   120→- Added robust Nairobi timezone helpers to `src/lib/wifi-utils.ts`: `nairobiDateParts`, `startOfDayNairobi`, `formatNairobiDayLabel` (uses Intl.DateTimeFormat with timeZone Africa/Nairobi).
+   121→   121→- Rewrote `src/app/api/admin/stats/route.ts` to use `startOfDayNairobi()`.
+   122→   122→- Rewrote `src/app/api/admin/revenue/route.ts` to build Nairobi-aligned day buckets.
+   123→   123→- Re-verified: todayRevenue 35, todaySessions 2, revenue chart shows "30 Jun" with today's data.
+   124→   124→- Verified all 6 admin sections render real data: Sessions (live countdowns), Packages (7 cards), Vouchers (12 codes), Transactions (100 rows, KES 70,910), Customers (13, top-3 highlighted).
+   125→   125→- Verified sticky footer: "PesaNet — WiFi billing built for Kenya 🇰🇦 / M-Pesa ready / Powered by Safaricom-style payments".
+   126→   126→- Verified mobile viewport (390x844) renders without breakage.
+   127→   127→
+   128→   128→Stage Summary:
+   129→   129→- PesaNet WiFi billing system is COMPLETE and browser-verified end-to-end.
+   130→   130→- All golden paths work: M-Pesa purchase, voucher redeem, admin dashboard + all 6 sections.
+   131→   131→- Lint clean, no runtime errors, responsive, sticky footer, green M-Pesa theme.
+   132→   132→- Admin credentials: admin / admin123.
+   133→   133→
+   134→   134→---
+   135→   135→Task ID: 4
+   136→   136→Agent: main (orchestrator)
+   137→   137→Task: Add 6 new feature areas — foundation (schema, seed, types, store)
+   138→   138→
+   139→   139→Work Log:
+   140→   140→- Extended Prisma schema with new models: Reseller, PromoCode, SupportTicket, Setting.
+   141→   141→- Added additive fields to existing models: Customer (+email, location, otpCode, otpExpires), Session (+promoCode, discountKES), Voucher (+resellerId relation), Transaction (+promoCode, discountKES, resellerId relation).
+   142→   142→- Ran `bun run db:push` — schema in sync.
+   143→   143→- Wrote `prisma/seed-features.ts` and ran it: 13 business settings, 4 resellers (Nairobi/Mombasa/Kisumu/Nakuru), 4 promo codes (WELCOME10, FLAT50, KIJIJIBIASHARA, NIGHTOWL), 5 support tickets (various categories/status).
+   144→   144→- Updated `src/lib/types.ts`: added Reseller, ResellerStats, PromoCode, SupportTicket, CustomerAccount, BusinessSettings, DiscountPreview; extended WifiSession/WifiTransaction with promoCode/discountKES/resellerId; extended AdminStats with openTickets/activeResellers.
+   145→   145→- Updated `src/lib/store.ts`: AppView now "customer"|"account"|"reseller"|"admin"; AdminSection extended with resellers/promos/tickets/reports/settings; added resellerAuthed/resellerPhone/resellerName + setResellerAuthed.
+   146→   146→
+   147→   147→Stage Summary:
+   148→   148→- DB schema + seed ready for new features.
+   149→   149→- Shared types + store are the contract for backend + frontend agents (tasks 5-a / 5-b).
+   150→   150→- Reseller seed phones: 254722111111 (Joseph/Nairobi), 254722222222 (Halima/Mombasa), 254722333333 (Patrick/Kisumu), 254722444444 (Grace/Nakuru).
+   151→   151→- Promo codes seeded: WELCOME10 (10%), FLAT50 (KES 50 off), KIJIJIBIASHARA (15%), NIGHTOWL (20%).
+   152→   152→- Settings keys available: businessName, paybillNumber, accountReference, supportPhone, supportEmail, supportHours, mpesaEnabled, voucherEnabled, resellerEnabled, defaultCommissionRate, notificationPhone, currency, timezone.
+   153→   153→
+   154→   154→---
+   155→   155→Task ID: 5-a
+   156→   156→Agent: full-stack-developer (backend)
+   157→   157→Task: Add backend API routes for the 6 new feature areas — Reseller/Agent program, Promo Codes, Support Tickets, Customer Self-Service Account (OTP login), Reports/CSV Export, Business Settings. Also extended 3 existing routes to integrate promo codes, ticket counts, and reseller counts.
+   158→   158→
+   159→   159→Work Log:
+   160→   160→- Read worklog.md (tasks 1, 2-a, 2-b, 3, 4) and the existing files I needed to modify: prisma/schema.prisma, src/lib/types.ts, src/lib/wifi-utils.ts, src/lib/db.ts, src/app/api/mpesa/stk/route.ts, src/app/api/mpesa/status/[id]/route.ts, src/app/api/admin/stats/route.ts, src/app/api/vouchers/generate/route.ts (for pattern reference), src/app/api/admin/revenue/route.ts (for Nairobi day-bucket pattern).
+   161→   161→- Created directory tree under src/app/api/** for all new routes (promos, resellers, reseller, customer, tickets, settings, reports).
+   162→   162→- MODIFIED /api/mpesa/stk/route.ts: added optional `promoCode` to POST body; added inline `validatePromo()` helper that mirrors the /api/promos/validate logic (active check, expiresAt check, maxUses check, percent/fixed discount calc); on invalid promo → 400 `{error:"Invalid or expired promo code"}`; on valid promo → stores `promoCode` + `discountKES` on the Transaction, charges `finalAmountKES`; success message mentions discounted amount when a promo was applied.
+   163→   163→- MODIFIED /api/mpesa/status/[id]/route.ts: when the simulated payment completes, the new Session is created with `promoCode` + `discountKES` copied from the transaction; if a promo was used, its `usesCount` is incremented (wrapped in try/catch so a promo lookup failure can't break the STK completion path).
+   164→   164→- MODIFIED /api/admin/stats/route.ts: added two `Promise.all` queries — `supportTicket.count({where:{status:{in:["open","in_progress"]}}})` and `reseller.count({where:{status:"active"}})` — and surfaced them as `openTickets` and `activeResellers` on the `AdminStats` response.
+   165→   165→- CREATED /api/promos/route.ts: GET lists all promos ordered by createdAt desc; POST creates a new promo (uppercases code, validates discountType ∈ {percent,fixed}, validates discountValue ≥ 0, optional maxUses/expiresAt).
+   166→   166→- CREATED /api/promos/[id]/route.ts: PUT updates partial promo fields; DELETE removes; both 404 if missing.
+   167→   167→- CREATED /api/promos/validate/route.ts: POST returns DiscountPreview-shaped `{valid, discountKES, finalAmountKES, message}`; properly distinguishes invalid/expired/usage-limit-reached messages.
+   168→   168→- CREATED /api/resellers/route.ts: GET returns resellers with computed `vouchersSold`/`vouchersUnsold` via grouped `voucher.groupBy` queries; POST creates reseller (validates phone, normalises, default commissionRate 10).
+   169→   169→- CREATED /api/resellers/[id]/route.ts: PUT updates partial fields; DELETE removes; on Prisma P2003 foreign-key error returns 400 "Cannot delete reseller with existing vouchers/transactions. Suspend instead.".
+   170→   170→- CREATED /api/resellers/[id]/topup/route.ts: POST adds amountKES to walletBalanceKES (must be > 0).
+   171→   171→- CREATED /api/reseller/otp/route.ts: POST normalises phone, looks up reseller (404 if missing, 403 if suspended), generates 4-digit OTP, stores otpCode + otpExpires (now+5min), returns `{otp, message:"Demo OTP: use <code> to sign in"}`.
+   172→   172→- CREATED /api/reseller/verify/route.ts: POST verifies OTP (401 on mismatch/expired), clears otpCode/otpExpires, returns `{success, resellerId, name, phone}`.
+   173→   173→- CREATED /api/reseller/me/route.ts: GET by `?phone=` returns `ResellerStats` (wallet, totals, commissionRate, vouchersSold/Unsold counts, last-10 sales as WifiTransaction, last-10 vouchers as WifiVoucher).
+   174→   174→- CREATED /api/reseller/buy-vouchers/route.ts: POST body `{phone, packageId, count}` (count 1–50, default 5); computes unitCost = round(price * (1 - commission/100)); checks wallet balance (400 with explicit KES X needed / KES Y have message); atomically deducts from wallet, adds commission to totalEarnedKES, adds totalCost to totalSalesKES; generates `count` unique voucher codes with batchId=`RESELLER-<ts>`; creates a `method:"reseller"`, `status:"completed"` Transaction; returns vouchers + updated reseller wallet snapshot.
+   175→   175→- CREATED /api/customer/otp/route.ts: POST normalises phone, 404 if no customer, generates 4-digit OTP, returns `{otp, message:"Demo OTP: use <code>"}`.
+   176→   176→- CREATED /api/customer/verify/route.ts: POST verifies OTP, clears it, returns `{success, customerId, phone, name}`.
+   177→   177→- CREATED /api/customer/account/route.ts: GET by `?phone=` returns `CustomerAccount` — auto-expires stale active sessions, computes totalSpent (sum of completed tx), sessionCount, activeSessions, last-10 sessions/transactions, and tickets filed from this phone number.
+   178→   178→- CREATED /api/customer/profile/route.ts: PUT updates name/email/location on the customer record.
+   179→   179→- CREATED /api/tickets/route.ts: GET supports `?status=` filter; POST validates phone, upserts customer (sets name if provided), creates ticket with sensible defaults (status "open", priority "normal", category "general").
+   180→   180→- CREATED /api/tickets/[id]/route.ts: GET single; PATCH updates status/priority/adminReply (adminReply only stored when status becomes "resolved" or "closed"); DELETE removes; 404s when missing.
+   181→   181→- CREATED /api/settings/route.ts: GET returns `{settings: BusinessSettings}` (flat key→value map); PUT accepts `{settings: {...}}` and upserts each key/value, then returns the full updated map.
+   182→   182→- CREATED /api/reports/transactions/route.ts: GET returns CSV (RFC-4180 escaping) of completed transactions in `?from=&to=` window (default last 30 days, Nairobi-aligned). Columns: Date, Phone, Amount (KES), Package, Method, M-Pesa Ref, Status, Promo Code, Discount (KES).
+   183→   183→- CREATED /api/reports/sessions/route.ts: GET returns CSV of sessions in the same window. Columns: Start Time, Phone, Package, Price (KES), Duration (min), Status, Data Used (MB), Auth Method, M-Pesa Ref, IP Address.
+   184→   184→- CREATED /api/reports/customers/route.ts: GET returns CSV of all customers with computed Total Spent / Sessions / Last Active. Columns: Phone, Name, Joined, Total Spent (KES), Sessions, Last Active.
+   185→   185→- CREATED /api/reports/summary/route.ts: GET `?days=30` returns JSON `{summary:{totalRevenue, totalSessions, totalCustomers, avgRevenuePerSession, totalVouchersSold, totalDiscountGiven, byPackage[], byDay[]}}` computed over the last N Nairobi-aligned days.
+   186→   186→- All new files use `export const dynamic = "force-dynamic"` at the top, wrap handlers in try/catch returning 500 `{error:"Internal server error"}` on failure, and use `NextResponse.json` for JSON and `new NextResponse(csvString, {headers:{...}})` for CSV downloads.
+   187→   187→- Ran `bun run lint`: zero errors in any of the new/modified API files. The only lint error in the repo is `src/app/page.tsx:34:19` (react-hooks/set-state-in-effect), which is owned by the frontend agent (task 5-b) and explicitly excluded from my permitted-modify list.
+   188→   188→- Ran `npx tsc --noEmit` filtered to my files: zero TypeScript errors in any of the new/modified `api/promos|resellers|reseller|customer|tickets|settings|reports` files. Pre-existing TS errors in api/sessions, api/transactions, api/vouchers, api/admin/customers (caused by task-4 type extensions to WifiSession/WifiTransaction/WifiVoucher that weren't back-filled into the older route mappers) are outside my permitted-modify scope; the frontend agent (5-b) should not be affected because those routes still return valid JSON at runtime — only `tsc` strict checking fails. Same applies to prisma/seed.ts, examples/websocket/*, skills/* — pre-existing, not mine.
+   189→   189→- Smoke-test caveat: the dev server's turbopack currently fails to compile `src/app/page.tsx` (missing `@/components/wifi/customer-account` and `@/components/wifi/reseller-portal` modules — owned by task 5-b). Because of how the dev server surfaces bundler errors, ALL routes (including the pre-existing `/api/packages`) currently return HTTP 500 with an HTML error page. Once task 5-b creates those components, all my routes will serve normally — the route code itself is correct.
+   190→   190→
+   191→   191→Stage Summary:
+   192→   192→- Files MODIFIED (3):
+   193→   193→  - src/app/api/mpesa/stk/route.ts (added promoCode validation + discount application on transaction)
+   194→   194→  - src/app/api/mpesa/status/[id]/route.ts (propagate promo/discount to session + increment promo usesCount)
+   195→   195→  - src/app/api/admin/stats/route.ts (added openTickets + activeResellers to AdminStats response)
+   196→   196→- Files CREATED (20):
+   197→   197→  - src/app/api/promos/route.ts (GET, POST)
+   198→   198→  - src/app/api/promos/[id]/route.ts (PUT, DELETE)
+   199→   199→  - src/app/api/promos/validate/route.ts (POST)
+   200→   200→  - src/app/api/resellers/route.ts (GET, POST)
+   201→   201→  - src/app/api/resellers/[id]/route.ts (PUT, DELETE)
+   202→   202→  - src/app/api/resellers/[id]/topup/route.ts (POST)
+   203→   203→  - src/app/api/reseller/otp/route.ts (POST)
+   204→   204→  - src/app/api/reseller/verify/route.ts (POST)
+   205→   205→  - src/app/api/reseller/me/route.ts (GET)
+   206→   206→  - src/app/api/reseller/buy-vouchers/route.ts (POST)
+   207→   207→  - src/app/api/customer/otp/route.ts (POST)
+   208→   208→  - src/app/api/customer/verify/route.ts (POST)
+   209→   209→  - src/app/api/customer/account/route.ts (GET)
+   210→   210→  - src/app/api/customer/profile/route.ts (PUT)
+   211→   211→  - src/app/api/tickets/route.ts (GET, POST)
+   212→   212→  - src/app/api/tickets/[id]/route.ts (GET, PATCH, DELETE)
+   213→   213→  - src/app/api/settings/route.ts (GET, PUT)
+   214→   214→  - src/app/api/reports/transactions/route.ts (GET → CSV)
+   215→   215→  - src/app/api/reports/sessions/route.ts (GET → CSV)
+   216→   216→  - src/app/api/reports/customers/route.ts (GET → CSV)
+   217→   217→  - src/app/api/reports/summary/route.ts (GET → JSON)
+   218→   218→- No new packages installed. No modifications to page.tsx, components/**, store.ts, schema.prisma, layout.tsx, globals.css, types.ts, wifi-utils.ts, db.ts.
+   219→   219→- Lint status: my files clean (verified via `npx eslint "src/app/api/**/*.ts"` → exit 0). The repo-level `bun run lint` only fails on `src/app/page.tsx`, owned by the frontend agent.
+   220→   220→- Type check status: my files clean (verified via `npx tsc --noEmit` filtered to api/promos|resellers|reseller|customer|tickets|settings|reports → zero errors).
+   221→   221→- Demo OTP flows return the OTP code in the response body for testing convenience (matches the spec).
+   222→   222→
+   223→   223→---
+   224→   224→Task ID: 6
+   225→   225→Agent: main (orchestrator)
+   226→   226→Task: Finish + verify the 6 new feature areas (frontend agent 5-b timed out partway)
+   227→   227→
+   228→   228→Work Log:
+   229→   229→- Reviewed 5-b output: it created customer-account.tsx, reseller-portal.tsx, updated customer-portal.tsx + mpesa-modal.tsx (promo codes), feature-badges.tsx, updated admin-dashboard.tsx (new nav groups), and 4 new admin managers (resellers, promos, tickets, reports). Updated page.tsx (4 views + dark mode toggle).
+   230→   230→- Gaps found: settings-manager.tsx missing (caused 500 — admin-dashboard imports it), overview.tsx not updated with openTickets/activeResellers, 2 lint errors (page.tsx ThemeToggle setState-in-effect, customer-account.tsx sessionStorage restore in effect).
+   231→   231→- Fixed page.tsx ThemeToggle: removed mounted state; icons now toggle via CSS `dark:` variants (hydration-safe, lint-clean).
+   232→   232→- Fixed customer-account.tsx: converted sessionStorage restore from useEffect to a lazy useState initializer (safe — component only mounts client-side on view switch).
+   233→   233→- Updated overview.tsx: replaced 2 mini-stats with "Open tickets" (LifeBuoy) and "Active resellers" (Store) using the new AdminStats fields.
+   234→   234→- Created settings-manager.tsx: grouped settings form (Business & M-Pesa, Support, Features/Reseller toggles, Localization) with Save → PUT /api/settings.
+   235→   235→- Restarted dev server to pick up regenerated Prisma client (global singleton held stale client without new models).
+   236→   236→- Agent Browser verification (all passed):
+   237→   237→  * Customer portal: M-Pesa checkout with promo WELCOME10 → 10% discount (KES 10→9) → purchase completed (ref JX13MDXKUP).
+   238→   238→  * My Account: OTP login (0712345680 → OTP 2751) → dashboard with total spent KES 9, active session with live countdown, profile, recent sessions.
+   239→   239→  * Reseller Portal: OTP login (0722111111 → OTP 6358) → dashboard (wallet KES 2,742, 12% commission) → bought 1 voucher (WFI-8870-5651) → wallet −KES 9, commission +KES 1.
+   240→   240→  * Admin: login → overview shows Open tickets 3 + Active resellers 4. All 5 new sections render: Resellers (4 active, KES 231,184 sold), Promo Codes (4), Support Tickets (filter tabs + ticket rows), Reports (KES 76,968 / 115 sessions / CSV exports), Settings (full form).
+   241→   241→  * Dark mode toggle: html class switched light↔dark correctly.
+   242→   242→  * CSV exports: /api/reports/transactions returns text/csv with Promo Code + Discount columns.
+   243→   243→- Lint: clean (exit 0). Dev log: no runtime errors.
+   244→   244→
+   245→   245→Stage Summary:
+   246→   246→- 6 new feature areas COMPLETE and browser-verified:
+   247→   247→  1. Customer Self-Service Account (OTP login + dashboard)
+   248→   248→  2. Reseller/Agent Program (portal + admin management)
+   249→   249→  3. Support Tickets (customer form + admin management)
+   250→   250→  4. Promo Codes (admin CRUD + checkout discount)
+   251→   251→  5. Reports & CSV Export (summary + 3 CSV downloads)
+   252→   252→  6. Settings + Dark Mode toggle (business config + theme switch)
+   253→   253→- New API routes (23): promos, resellers, reseller auth/portal, customer auth/account, tickets, settings, reports.
+   254→   254→- Header now has 4 views: Customer Portal | My Account | Reseller | Admin Dashboard, plus a dark mode toggle.
+   255→   255→
+   256→   256→---
+   257→   257→Task ID: 7
+   258→   258→Agent: main (orchestrator)
+   259→   259→Task: Round 3 foundation — schema v3 (sites, announcements, feedback) + seed + types + store
+   260→   260→
+   261→   261→Work Log:
+   262→   262→- Extended Prisma schema with 3 new models: HotspotSite (multi-location routers), Announcement (broadcast banners), Feedback (post-session ratings 1-5).
+   263→   263→- Added fields to Session: siteId (optional → HotspotSite), extended (Boolean), feedback relation (1:1).
+   264→   264→- Ran `bun run db:push` — schema in sync.
+   265→   265→- Wrote `prisma/seed-v3.ts` and ran it: 5 hotspot sites (Nairobi CBD, Westlands, Mombasa Nyali, Kisumu [maintenance], Eldoret), backfilled siteId on 115 existing sessions, 4 announcements (3 active incl. promo/maintenance/info, 1 inactive), 15 feedback entries (ratings 2-5 with comments).
+   266→   266→- Updated `src/lib/types.ts`: added siteId/siteName/extended/hasFeedback to WifiSession; added activeAnnouncements/avgRating/totalFeedback to AdminStats; added new types HotspotSite, Announcement, Feedback, AnalyticsData.
+   267→   267→- Updated `src/lib/store.ts`: AdminSection extended with sites/announcements/feedback.
+   268→   268→
+   269→   269→Stage Summary:
+   270→   270→- DB schema v3 + seed ready.
+   271→   271→- Types + store are the contract for backend (8-a) + frontend (8-b) agents.
+   272→   272→- Existing session-mapping routes (api/sessions, api/admin/customers, reports) will need siteName/hasFeedback backfill — backend agent owns this.
+   273→   273→- Seeded sites: Nairobi CBD Moi Avenue, Westlands Mall, Mombasa Nyali, Kisumu Town Centre (maintenance), Eldoret Rupa's Mall.
+   274→   274→

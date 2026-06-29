@@ -31,6 +31,10 @@ export interface WifiSession {
   mpesaRef: string | null
   promoCode: string | null
   discountKES: number
+  siteId: string | null
+  siteName: string | null
+  extended: boolean
+  hasFeedback: boolean
   customer?: { name: string | null } | null
 }
 
@@ -70,6 +74,9 @@ export interface AdminStats {
   packagesActive: number
   openTickets: number
   activeResellers: number
+  activeAnnouncements: number
+  avgRating: number
+  totalFeedback: number
 }
 
 export interface RevenuePoint {
@@ -166,4 +173,45 @@ export interface DiscountPreview {
   discountKES: number
   finalAmountKES: number
   message: string
+}
+
+// --- v3 feature types ---
+
+export interface HotspotSite {
+  id: string
+  name: string
+  location: string
+  routerIp: string | null
+  maxUsers: number
+  status: string // active, inactive, maintenance
+  createdAt: string
+  activeSessions: number
+  totalSessions: number
+}
+
+export interface Announcement {
+  id: string
+  title: string
+  message: string
+  type: string // info, warning, maintenance, promo
+  active: boolean
+  expiresAt: string | null
+  createdAt: string
+}
+
+export interface Feedback {
+  id: string
+  sessionId: string
+  phone: string
+  rating: number // 1..5
+  comment: string | null
+  packageName: string | null
+  createdAt: string
+}
+
+export interface AnalyticsData {
+  packagePopularity: { packageName: string; count: number; revenue: number }[]
+  peakHours: { hour: string; sessions: number }[]
+  siteBreakdown: { siteName: string; sessions: number; revenue: number }[]
+  ratingDistribution: { rating: number; count: number }[]
 }

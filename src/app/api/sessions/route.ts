@@ -25,6 +25,12 @@ function mapSession(s: any): WifiSession {
     macAddress: s.macAddress,
     authMethod: s.authMethod,
     mpesaRef: s.mpesaRef,
+    promoCode: s.promoCode ?? null,
+    discountKES: s.discountKES ?? 0,
+    siteId: s.siteId ?? null,
+    siteName: s.site?.name ?? null,
+    extended: s.extended ?? false,
+    hasFeedback: !!s.feedback,
     customer: s.customer ? { name: s.customer.name } : null,
   };
 }
@@ -56,7 +62,11 @@ export async function GET(req: Request) {
       where,
       orderBy: { startTime: "desc" },
       take: 200,
-      include: { customer: { select: { name: true } } },
+      include: {
+        customer: { select: { name: true } },
+        site: { select: { name: true } },
+        feedback: { select: { id: true } },
+      },
     });
 
     return NextResponse.json({ sessions: sessions.map(mapSession) });
@@ -105,6 +115,20 @@ export async function POST(req: Request) {
     const now = new Date();
     const endTime = new Date(now.getTime() + pkg.durationMinutes * 60 * 1000);
 
+    // Tag the session to a random active hotspot site (first active, fallback random).
+    let siteId: string | undefined;
+    const activeSites = await db.hotspotSite.findMany({
+      where: { status: "active" },
+      select: { id: true },
+    });
+    if (activeSites.length > 0) {
+      const pick =
+        activeSites.length === 1
+          ? activeSites[0]
+          : activeSites[Math.floor(Math.random() * activeSites.length)];
+      siteId = pick.id;
+    }
+
     const session = await db.session.create({
       data: {
         customerId: customer.id,
@@ -120,8 +144,13 @@ export async function POST(req: Request) {
         mpesaRef: mpesaRef ?? null,
         ipAddress: generateFakeIP(),
         macAddress: generateFakeMAC(),
+        ...(siteId ? { siteId } : {}),
       },
-      include: { customer: { select: { name: true } } },
+      include: {
+        customer: { select: { name: true } },
+        site: { select: { name: true } },
+        feedback: { select: { id: true } },
+      },
     });
 
     return NextResponse.json({ session: mapSession(session) });

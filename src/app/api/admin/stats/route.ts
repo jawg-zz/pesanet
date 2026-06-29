@@ -18,6 +18,7 @@ export async function GET() {
 
     // Start of "today" in Africa/Nairobi (UTC+3), as a proper UTC instant.
     const startOfTodayEAT = startOfDayNairobi();
+    const now = new Date();
 
     const [
       activeSessionsAgg,
@@ -29,6 +30,9 @@ export async function GET() {
       packagesActiveAgg,
       openTicketsAgg,
       activeResellersAgg,
+      activeAnnouncementsAgg,
+      feedbackAgg,
+      totalFeedbackAgg,
     ] = await Promise.all([
       db.session.count({ where: { status: "active" } }),
       db.session.findMany({
@@ -47,6 +51,16 @@ export async function GET() {
         where: { status: { in: ["open", "in_progress"] } },
       }),
       db.reseller.count({ where: { status: "active" } }),
+      // Active announcements: active=true AND (expiresAt is null OR expiresAt > now)
+      db.announcement.count({
+        where: {
+          active: true,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+      // Average rating across all feedback (1..5)
+      db.feedback.aggregate({ _avg: { rating: true } }),
+      db.feedback.count(),
     ]);
 
     const todayRevenue = todaySessionsRows
@@ -60,6 +74,11 @@ export async function GET() {
       0
     );
 
+    const avgRating =
+      feedbackAgg._avg.rating != null
+        ? Math.round(feedbackAgg._avg.rating * 10) / 10
+        : 0;
+
     const stats: AdminStats = {
       activeSessions: activeSessionsAgg,
       todayRevenue,
@@ -70,6 +89,9 @@ export async function GET() {
       packagesActive: packagesActiveAgg,
       openTickets: openTicketsAgg,
       activeResellers: activeResellersAgg,
+      activeAnnouncements: activeAnnouncementsAgg,
+      avgRating,
+      totalFeedback: totalFeedbackAgg,
     };
 
     return NextResponse.json(stats);

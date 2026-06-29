@@ -6,6 +6,9 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,9 +16,10 @@ import {
 } from "recharts"
 import {
   Activity,
-  LifeBuoy,
+  Megaphone,
+  PieChart as PieChartIcon,
   Receipt,
-  Store,
+  Star,
   TrendingUp,
   Users,
   Wallet,
@@ -26,17 +30,28 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/wifi/status-badge"
 import type {
   AdminStats,
+  AnalyticsData,
   RevenuePoint,
   WifiSession,
   WifiTransaction,
 } from "@/lib/types"
 import { formatKES, timeAgo } from "@/lib/wifi-utils"
 
+const PIE_COLORS = [
+  "#15803d", // emerald-700
+  "#16a34a", // emerald-600
+  "#22c55e", // emerald-500
+  "#65a30d", // lime-600
+  "#84cc16", // lime-500
+  "#10b981", // emerald-400
+]
+
 export function AdminOverview() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [revenue, setRevenue] = useState<RevenuePoint[]>([])
   const [recentSessions, setRecentSessions] = useState<WifiSession[]>([])
   const [recentTx, setRecentTx] = useState<WifiTransaction[]>([])
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -44,17 +59,21 @@ export function AdminOverview() {
     async function load() {
       setLoading(true)
       try {
-        const [s, r, tx] = await Promise.all([
+        const [s, r, tx, an] = await Promise.all([
           fetch("/api/admin/stats").then((r) => r.json() as Promise<AdminStats>),
           fetch("/api/admin/revenue?days=7")
             .then((r) => r.json() as Promise<{ data: RevenuePoint[] }>),
           fetch("/api/transactions?limit=5")
             .then((r) => r.json() as Promise<{ transactions: WifiTransaction[] }>),
+          fetch("/api/admin/analytics?days=30")
+            .then((r) => r.json() as Promise<{ analytics: AnalyticsData }>)
+            .catch(() => ({ analytics: null as AnalyticsData | null })),
         ])
         if (!active) return
         setStats(s)
         setRevenue(r.data ?? [])
         setRecentTx(tx.transactions ?? [])
+        setAnalytics(an.analytics ?? null)
         // Fetch recent sessions for the table.
         try {
           const sRes = await fetch("/api/sessions?status=active")
@@ -144,19 +163,28 @@ export function AdminOverview() {
           icon={<Receipt className="size-4" />}
         />
         <MiniStat
-          label="Open tickets"
-          value={stats?.openTickets ?? 0}
-          icon={<LifeBuoy className="size-4" />}
+          label="Avg rating"
+          value={
+            <span className="flex items-center gap-1">
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              {(stats?.avgRating ?? 0).toFixed(1)}
+              <span className="text-xs font-normal text-muted-foreground">
+                / 5
+              </span>
+            </span>
+          }
+          icon={<Star className="size-4" />}
         />
         <MiniStat
-          label="Active resellers"
-          value={stats?.activeResellers ?? 0}
-          icon={<Store className="size-4" />}
+          label="Active announcements"
+          value={stats?.activeAnnouncements ?? 0}
+          icon={<Megaphone className="size-4" />}
         />
       </div>
 
-      {/* Revenue chart */}
-      <Card className="py-0">
+      {/* Revenue chart + Package popularity */}
+      <div className="grid gap-4 lg:grid-cols-3">
+      <Card className="py-0 lg:col-span-2">
         <CardHeader className="flex-row items-center justify-between px-5 pt-5">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -217,6 +245,86 @@ export function AdminOverview() {
           </div>
         </CardContent>
       </Card>
+
+        {/* Package popularity donut */}
+        <Card className="py-0">
+          <CardHeader className="px-5 pt-5">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PieChartIcon className="size-4 text-primary" />
+              Package popularity
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Last 30 days · by sessions</p>
+          </CardHeader>
+          <CardContent className="px-2 pb-4 sm:px-4">
+            <div className="h-72 w-full">
+              {!analytics || analytics.packagePopularity.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <PieChartIcon className="size-6" />
+                  <p className="text-sm">No package data yet.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={analytics.packagePopularity
+                        .slice(0, 6)
+                        .map((p) => ({
+                          name: p.packageName,
+                          value: p.count,
+                        }))}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      stroke="none"
+                    >
+                      {analytics.packagePopularity
+                        .slice(0, 6)
+                        .map((_, i) => (
+                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number, n: string) => [`${v} sessions`, n]}
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid oklch(0.9 0.01 150)",
+                        fontSize: 12,
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            {analytics && analytics.packagePopularity.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {analytics.packagePopularity.slice(0, 5).map((p, i) => (
+                  <li
+                    key={p.packageName}
+                    className="flex items-center justify-between text-xs"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                        }}
+                      />
+                      <span className="truncate">{p.packageName}</span>
+                    </span>
+                    <span className="ml-2 shrink-0 font-mono tabular-nums text-muted-foreground">
+                      {p.count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent activity */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -350,7 +458,7 @@ function MiniStat({
   icon,
 }: {
   label: string
-  value: number | string
+  value: number | string | React.ReactNode
   icon: React.ReactNode
 }) {
   return (

@@ -8,6 +8,7 @@ import {
   Loader2,
   Lock,
   Phone,
+  Printer,
   Smartphone,
   Sparkles,
   Tag,
@@ -32,6 +33,10 @@ import {
   validateKePhone,
 } from "@/lib/wifi-utils"
 import { useToast } from "@/hooks/use-toast"
+import {
+  ReceiptPrint,
+  type ReceiptData,
+} from "@/components/wifi/receipt-print"
 
 type Step = "form" | "waiting" | "success" | "failed"
 
@@ -69,6 +74,7 @@ export function MpesaModal({
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
   const [discount, setDiscount] = useState<DiscountPreview | null>(null)
   const [validating, setValidating] = useState(false)
+  const [receiptOpen, setReceiptOpen] = useState(false)
 
   const finalAmount = discount?.valid ? discount.finalAmountKES : pkg?.priceKES ?? 0
   const hasDiscount = discount?.valid && (discount.discountKES ?? 0) > 0
@@ -245,6 +251,30 @@ export function MpesaModal({
     }
     onOpenChange(open)
   }
+
+  function openReceipt() {
+    if (!pkg || !mpesaRef) return
+    setReceiptOpen(true)
+  }
+
+  const receiptData: ReceiptData | null =
+    pkg && mpesaRef
+      ? {
+          mpesaRef,
+          phone: phone.trim() || session?.phone || "—",
+          packageName: pkg.name,
+          priceKES: pkg.priceKES,
+          discountKES: discount?.valid ? discount.discountKES : 0,
+          promoCode: appliedPromo,
+          durationMinutes: pkg.durationMinutes,
+          startTime: session?.startTime ?? new Date().toISOString(),
+          endTime:
+            session?.endTime ??
+            new Date(
+              Date.now() + pkg.durationMinutes * 60 * 1000
+            ).toISOString(),
+        }
+      : null
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -547,13 +577,25 @@ export function MpesaModal({
                 </div>
               </div>
 
-              <Button
-                onClick={() => handleClose(false)}
-                className="w-full"
-                size="lg"
-              >
-                Done
-              </Button>
+              <div className="flex w-full gap-2">
+                <Button
+                  onClick={openReceipt}
+                  variant="outline"
+                  className="flex-1"
+                  size="lg"
+                  disabled={!mpesaRef}
+                >
+                  <Printer className="size-4" />
+                  Print Receipt
+                </Button>
+                <Button
+                  onClick={() => handleClose(false)}
+                  className="flex-1"
+                  size="lg"
+                >
+                  Done
+                </Button>
+              </div>
             </motion.div>
           )}
 
@@ -593,6 +635,13 @@ export function MpesaModal({
           )}
         </AnimatePresence>
       </DialogContent>
+
+      {/* Printable receipt */}
+      <ReceiptPrint
+        data={receiptData}
+        open={receiptOpen}
+        onOpenChange={setReceiptOpen}
+      />
     </Dialog>
   )
 }

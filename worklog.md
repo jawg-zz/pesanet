@@ -252,3 +252,153 @@ Stage Summary:
   6. Settings + Dark Mode toggle (business config + theme switch)
 - New API routes (23): promos, resellers, reseller auth/portal, customer auth/account, tickets, settings, reports.
 - Header now has 4 views: Customer Portal | My Account | Reseller | Admin Dashboard, plus a dark mode toggle.
+
+---
+Task ID: 7
+Agent: main (orchestrator)
+Task: Round 3 foundation — schema v3 (sites, announcements, feedback) + seed + types + store
+
+Work Log:
+- Extended Prisma schema with 3 new models: HotspotSite (multi-location routers), Announcement (broadcast banners), Feedback (post-session ratings 1-5).
+- Added fields to Session: siteId (optional → HotspotSite), extended (Boolean), feedback relation (1:1).
+- Ran `bun run db:push` — schema in sync.
+- Wrote `prisma/seed-v3.ts` and ran it: 5 hotspot sites (Nairobi CBD, Westlands, Mombasa Nyali, Kisumu [maintenance], Eldoret), backfilled siteId on 115 existing sessions, 4 announcements (3 active incl. promo/maintenance/info, 1 inactive), 15 feedback entries (ratings 2-5 with comments).
+- Updated `src/lib/types.ts`: added siteId/siteName/extended/hasFeedback to WifiSession; added activeAnnouncements/avgRating/totalFeedback to AdminStats; added new types HotspotSite, Announcement, Feedback, AnalyticsData.
+- Updated `src/lib/store.ts`: AdminSection extended with sites/announcements/feedback.
+
+Stage Summary:
+- DB schema v3 + seed ready.
+- Types + store are the contract for backend (8-a) + frontend (8-b) agents.
+- Existing session-mapping routes (api/sessions, api/admin/customers, reports) will need siteName/hasFeedback backfill — backend agent owns this.
+- Seeded sites: Nairobi CBD Moi Avenue, Westlands Mall, Mombasa Nyali, Kisumu Town Centre (maintenance), Eldoret Rupa's Mall.
+
+---
+Task ID: 8-b
+Agent: full-stack-developer (frontend)
+Task: Build NEW frontend features for PesaNet round 3 — Hotspot Sites management, Announcements (admin + customer banner), Customer Feedback/Ratings, Session Extension, Enhanced Analytics charts, and Printable Receipts. Wired to the documented v3 API contract.
+
+Work Log:
+- Read worklog.md (tasks 1, 2-a, 2-b, 3, 4, 5-a, 5-b, 6, 7) to understand the foundation (types, store, helpers, theme, demo creds).
+- Inspected existing files I needed to extend: admin-dashboard.tsx, admin/overview.tsx, admin/reports-manager.tsx, customer-portal.tsx, active-session-card.tsx, mpesa-modal.tsx, active-session-checker.tsx, customer-account.tsx, promos-manager.tsx (pattern reference), status-badge.tsx.
+- Confirmed ESLint config (`react-hooks/set-state-in-effect` enforced; unused vars off).
+- Smoke-tested live v3 endpoints to confirm response shapes match the contract: `/api/admin/stats` (activeAnnouncements=3, avgRating=4.3, totalFeedback=15), `/api/announcements`, `/api/sites` (5 sites incl. maintenance one), `/api/feedback` (15 entries with packageName), `/api/admin/analytics?days=30` (packagePopularity[7], peakHours[24], siteBreakdown[], ratingDistribution[5]), `/api/sessions` (now has siteId/siteName/extended/hasFeedback), `POST /api/sessions/[id]/extend` (returned updated session + mpesaRef).
+- CREATED `src/components/wifi/admin/sites-manager.tsx`: summary cards (total/active/active sessions), responsive grid of site cards (name, location, routerIp mono, maxUsers, status badge green/amber/gray, activeSessions/totalSessions tiles, utilisation Progress bar), Add-Site Dialog (name, location, routerIp, maxUsers, status select), Edit flow (PUT), Delete with AlertDialog confirm (surfaces 400 error messages in toast).
+- CREATED `src/components/wifi/admin/announcements-manager.tsx`: Table view (title with type icon, message truncated, type badge info=slate/warning=amber/maintenance=orange/promo=green, expiresAt, createdAt timeAgo, inline Switch toggle that PUTs immediately with optimistic update + revert-on-failure), Create-Announcement Dialog (title, message Textarea, type select, active switch, expiresAt date), Edit + Delete with confirm.
+- CREATED `src/components/wifi/admin/feedback-manager.tsx`: Big-star avg rating card (4.3/5) with mini Stars, rating-distribution card with 5 clickable progress bars (filter on click), Tabs filter (All/5/4/3/2/1), responsive grid of feedback cards each with filled/empty Star icons, phone + packageName badges, comment block (or "No comment left" dashed), timeAgo, delete-with-confirm.
+- CREATED `src/components/wifi/receipt-print.tsx`: Dialog showing a polished M-Pesa receipt preview (gradient header "PesaNet WiFi / Payment Receipt", dashed green M-Pesa ref box, dl of date/phone/package/duration/start/end/amount, strike-through original price + green discount line + promo code when applicable, big "Amount Paid" total, paybill info, "Thank you" line, Close + Print Receipt buttons). Print button builds a self-contained HTML string (CSS + script) and opens it in a new window with `window.print()` auto-triggered (falls back to blob URL if pop-up blocked). Uses a `ReceiptData` interface exported for reuse.
+- EDITED `src/components/wifi/admin-dashboard.tsx`: added 3 imports (SitesManager, AnnouncementsManager, FeedbackManager), 3 new icons (RadioTower, Megaphone, Star), 3 new NAV entries in the extensions group (sites/announcements/feedback), 3 new switch cases in renderSection().
+- EDITED `src/components/wifi/admin/overview.tsx`: added AnalyticsData state + fetch /api/admin/analytics?days=30 (catch non-fatal), replaced two mini-stats (Open tickets/Active resellers → Avg rating with star icon + Active announcements), added a 3-col grid: 2/3 width Revenue AreaChart + 1/3 width "Package popularity" PieChart donut (green palette PIE_COLORS, innerRadius 55, top-5 legend list). Defined PIE_COLORS constant + widened MiniStat `value` type to `number | string | React.ReactNode`.
+- EDITED `src/components/wifi/admin/reports-manager.tsx`: added AnalyticsData state + parallel fetch alongside /api/reports/summary, inserted 3 new chart cards before the Exports section: (a) Package popularity PieChart (green palette, with legend), (b) Peak hours BarChart (24 green bars, hour on X), (c) Site breakdown as a responsive grid of mini cards (site name + sessions count + revenue + per-site progress bar normalised to busiest site). Added Clock, MapPin, PieChartIcon, RadioTower icons + Cell/Pie/PieChart from recharts.
+- EDITED `src/components/wifi/customer-portal.tsx`: added Announcement type + active-only fetch on mount, dismissible banner at top (AnimatePresence height/opacity transitions, type-coloured: info=slate / warning=amber / maintenance=orange / promo=emerald, lucide Info/AlertTriangle/Wrench/Tag icons, dismiss X button stored in local Set state — not persisted). Banner renders nothing when empty. Wired `onExtended` through ActiveSessionInline → ActiveSessionCard so the inline active session card refreshes after an extension.
+- EDITED `src/components/wifi/active-session-card.tsx`: added new optional props `onExtended` + `onRefresh`, "Extend Session" outline button next to Disconnect, Extend Dialog (current end time + remaining summary, scrollable package list with selectable radio-style buttons + Popular badge, optional promo code input, computed new end time preview), POST /api/sessions/[id]/extend with {packageId, promoCode?}, on success toast with mpesaRef + message + call onExtended(updated) or onRefresh(). Added "Extended" Zap badge in header when session.extended, site name with MapPin below the title when session.siteName present, "Ends ... (extended)" timestamp line when extended. Fixed import path typo (`@lib` → `@/lib`).
+- EDITED `src/components/wifi/mpesa-modal.tsx`: added Printer icon + ReceiptPrint/ReceiptData imports, `receiptOpen` state, `openReceipt()` opener, `receiptData` derived from pkg + mpesaRef + session + appliedPromo + discount, replaced single "Done" button on success step with two side-by-side buttons: "Print Receipt" (outline, opens ReceiptPrint dialog) + "Done" (primary). ReceiptPrint dialog rendered inside the parent Dialog so it stacks correctly.
+- ADDITIVE wiring (only added the new optional `onExtended` callback — no other changes): `active-session-checker.tsx` (so the hero session checker refreshes after extension) and `customer-account.tsx` (so the My Account active sessions list refreshes via its existing `load` function).
+- Ran `bun run lint` — exit code 0, zero errors, zero warnings.
+- Verified dev server hot-reloaded with no errors; only Prisma query logs + 200 responses in the log.
+- Confirmed the Extend Session endpoint actually worked end-to-end (POST /api/sessions/[id]/extend returned 200 with updated session + new mpesaRef + the session.endTime was rolled forward in the DB).
+
+Stage Summary:
+- Files CREATED (4):
+  - src/components/wifi/admin/sites-manager.tsx
+  - src/components/wifi/admin/announcements-manager.tsx
+  - src/components/wifi/admin/feedback-manager.tsx
+  - src/components/wifi/receipt-print.tsx
+- Files EDITED (6 owned + 2 additive wiring):
+  - src/components/wifi/admin-dashboard.tsx (3 nav + 3 switch cases + imports)
+  - src/components/wifi/admin/overview.tsx (2 new mini-stats + package popularity donut)
+  - src/components/wifi/admin/reports-manager.tsx (3 new chart cards)
+  - src/components/wifi/customer-portal.tsx (announcements banner + onExtended wiring)
+  - src/components/wifi/active-session-card.tsx (Extend Session button + dialog, Extended badge, site name, new optional onExtended/onRefresh props)
+  - src/components/wifi/mpesa-modal.tsx (Print Receipt button + ReceiptPrint dialog mount)
+  - src/components/wifi/active-session-checker.tsx (additive: onExtended wiring)
+  - src/components/wifi/customer-account.tsx (additive: onExtended wiring)
+- All 6 new features are fully usable end-to-end against the live v3 backend:
+  1. Hotspot Sites management — full CRUD with utilisation bars
+  2. Announcements — admin CRUD + customer-facing dismissible banner
+  3. Customer Feedback — admin viewer with rating distribution + filter + delete
+  4. Session Extension — Extend Session dialog with package picker + promo code + new end-time preview + toast
+  5. Enhanced Analytics — donut on Overview + pie/bar/site-breakdown on Reports
+  6. Printable Receipts — M-Pesa-styled receipt dialog with new-window print
+- Lint: clean (exit 0). No runtime errors. Mobile-first responsive, green theme + amber/emerald/orange/slate accents, no indigo/blue. Skeletons for loading, empty states with icons, toasts for all async actions, custom-scroll on long lists.
+
+---
+Task ID: 8-a
+Agent: full-stack-developer (backend)
+Task: Build Round 3 backend APIs — Hotspot Sites, Announcements, Feedback, Session Extension (top-up), Analytics — and backfill v3 fields into existing session/stats/mpesa/voucher routes.
+
+Work Log:
+- Read worklog (Tasks 1, 2-a, 5-a, 5-b, 6, 7) + schema.prisma + types.ts + wifi-utils.ts to understand the contract.
+- Modified 5 existing routes to backfill new WifiSession/AdminStats fields:
+  * /api/sessions GET — include site + feedback; mapSession emits siteName/hasFeedback/extended/promoCode/discountKES/siteId.
+  * /api/sessions/active GET — same backfill.
+  * /api/admin/stats GET — added activeAnnouncements (active=true AND (expiresAt null OR > now)), avgRating (rounded 1 decimal, 0 if none), totalFeedback.
+  * /api/mpesa/status/[id] — on payment completion, sets siteId to first active HotspotSite (fallback any site).
+  * /api/vouchers/redeem — sets siteId on created session; mapSession backfilled with new fields + include site/feedback.
+- Created 8 new route files:
+  * /api/sites (GET list with activeSessions/totalSessions computed; POST create with name/location validation).
+  * /api/sites/[id] (PUT partial update; DELETE with explicit session-reference pre-check returning 400 "Cannot delete a site with existing sessions...").
+  * /api/announcements (GET ?all=true returns all for admin, default returns active-only; POST create with type default "info").
+  * /api/announcements/[id] (PUT partial update; DELETE).
+  * /api/feedback (GET with optional ?rating= filter, includes session.packageName, limit 100; POST with session lookup, 404 if not found, 400 if duplicate, rating 1..5 validation, copies phone + customerId from session).
+  * /api/feedback/[id] (DELETE; 404 if not found).
+  * /api/sessions/[id]/extend (POST top-up: validates active session + active package, optional promo validation reusing mpesa/stk logic, creates completed M-Pesa Transaction with generated mpesaRef, extends endTime/durationMinutes, sets extended=true, increments promo.usesCount, returns { session, mpesaRef, message }).
+  * /api/admin/analytics (GET ?days=30 default, clamped 1..90; returns packagePopularity sorted by count desc, peakHours 24-bucket in Africa/Nairobi tz via Intl.DateTimeFormat, siteBreakdown sorted by sessions desc, ratingDistribution 1..5 always all 5 entries).
+- Hit a bug during testing: GET /api/feedback?rating=5 returned 500 because `const where: any = undefined` then `where.rating = r` threw. Fixed by initialising `where = {}`.
+- Hit a bug during testing: DELETE /api/sites/[id] on a site with sessions silently succeeded (Prisma SetNull on optional FK). Fixed by adding an explicit `db.session.count({ where: { siteId } })` pre-check returning 400.
+- Restored test data: re-created the deleted Nairobi CBD site via a one-off script and re-linked 32 orphaned sessions (UPDATE Session SET siteId WHERE siteId IS NULL). DB now back to seed-v3 state.
+- Live curl-tested all endpoints against the dev server (port 3000) — all pass, including error cases (404s, 400s, promo validation, days clamping, duplicate feedback, expired session extension).
+- Ran `bun run lint` → exit 0. Ran `npx tsc --noEmit` filtered to my files → zero errors.
+
+Stage Summary:
+- 8 new route files + 5 modified route files delivered. All match the contract in the task spec.
+- Files created:
+  - src/app/api/sites/route.ts
+  - src/app/api/sites/[id]/route.ts
+  - src/app/api/announcements/route.ts
+  - src/app/api/announcements/[id]/route.ts
+  - src/app/api/feedback/route.ts
+  - src/app/api/feedback/[id]/route.ts
+  - src/app/api/sessions/[id]/extend/route.ts
+  - src/app/api/admin/analytics/route.ts
+- Files modified:
+  - src/app/api/sessions/route.ts
+  - src/app/api/sessions/active/route.ts
+  - src/app/api/admin/stats/route.ts
+  - src/app/api/mpesa/status/[id]/route.ts
+  - src/app/api/vouchers/redeem/route.ts
+- No new packages installed. No modifications to page.tsx, components/**, store.ts, schema.prisma, layout.tsx, globals.css, types.ts, wifi-utils.ts, db.ts.
+- Lint: clean (exit 0). TypeScript: clean for all my files.
+- Agent work record: /home/z/my-project/agent-ctx/8-a-full-stack-developer-backend.md
+- Frontend agent (8-b) can consume: GET/POST/PUT/DELETE /api/sites, GET/POST/PUT/DELETE /api/announcements, GET/POST/DELETE /api/feedback, POST /api/sessions/[id]/extend, GET /api/admin/analytics, and the backfilled /api/sessions + /api/sessions/active + /api/admin/stats.
+
+---
+Task ID: 9
+Agent: main (orchestrator)
+Task: Round 3 — end-to-end verification of 6 new feature areas
+
+Work Log:
+- Both subagents completed: 8-a backend (8 new routes + 5 modified, lint clean) and 8-b frontend (4 new components + 6 edited, lint clean).
+- Restarted dev server to pick up regenerated Prisma client (new models: HotspotSite, Announcement, Feedback).
+- Verified all new APIs return 200 with correct shapes: /api/sites (5 sites), /api/announcements (3 active), /api/feedback (15 entries with packageName), /api/admin/analytics (packagePopularity/peakHours[24]/siteBreakdown/ratingDistribution), /api/admin/stats (activeAnnouncements:3, avgRating:4.4, totalFeedback:15).
+- Agent Browser verification (all passed):
+  * Customer portal: announcement banners render at top (Weekly Unlimited promo, Welcome/ WELCOME10, Kisumu maintenance) — dismissible, type-colored.
+  * M-Pesa purchase (0712345681, Quick 30) → completed (ref 4JT9YPCD9J) → "Print Receipt" button present → opens receipt dialog ("Payment Receipt" with M-Pesa ref, package, duration, amount).
+  * Active session card: shows "Extend Session" button + "Extended" badge after extension + site name (Westlands Mall). Extended Quick 30 with Hourly Boost → end time rolled forward 1h, time remaining 1h 29m, "Extended" Zap badge + "(extended)" label.
+  * Admin overview: new sidebar items (Hotspot Sites, Announcements, Feedback) + new mini-stats "Avg rating 4.4/5" and "Active announcements 3" + package popularity donut chart.
+  * Hotspot Sites manager: 5 sites with router IPs, max users, active/total sessions, utilisation bars, status badges (Active/Maintenance).
+  * Announcements manager: table of 4 announcements with type badges, inline active toggle (Live/Hidden), create dialog.
+  * Feedback manager: avg rating 4.4/5, rating distribution bars (5★:11, 4★:1, 3★:1, 2★:2, 1★:0), filter tabs, feedback cards with stars + comments.
+  * Reports: new charts — Revenue by package (bars), Package popularity (pie), Peak hours (24-bar), Site breakdown (per-site sessions + revenue).
+  * Sessions manager: live countdowns, extended session shows 1h 27m remaining.
+- Lint: clean (exit 0). Dev log: no runtime errors. No console errors.
+
+Stage Summary:
+- Round 3 COMPLETE and browser-verified. 6 new feature areas live:
+  1. Hotspot Sites / Network Management (multi-location, utilisation, maintenance status)
+  2. Announcements / Broadcasts (admin CRUD + customer portal banner)
+  3. Customer Feedback & Ratings (post-session 1-5 stars + admin dashboard)
+  4. Session Extension / Top-up (extend active session with any package + promo)
+  5. Enhanced Analytics (package popularity pie, peak hours bar, site breakdown, rating distribution)
+  6. Printable Receipts (M-Pesa receipt dialog with print-to-PDF via new window)
+- Sessions are now tagged to hotspot sites; new purchases/redeems auto-assign to an active site.
+- Admin sidebar Extensions group now has: Resellers, Promo Codes, Support Tickets, Reports, Hotspot Sites, Announcements, Feedback, Settings.

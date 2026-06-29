@@ -20,6 +20,12 @@ function mapSession(s: any): WifiSession {
     macAddress: s.macAddress,
     authMethod: s.authMethod,
     mpesaRef: s.mpesaRef,
+    promoCode: s.promoCode ?? null,
+    discountKES: s.discountKES ?? 0,
+    siteId: s.siteId ?? null,
+    siteName: s.site?.name ?? null,
+    extended: s.extended ?? false,
+    hasFeedback: !!s.feedback,
     customer: s.customer ? { name: s.customer.name } : null,
   };
 }
@@ -47,7 +53,11 @@ export async function GET(req: Request) {
     const session = await db.session.findFirst({
       where: { phone, status: "active" },
       orderBy: { startTime: "desc" },
-      include: { customer: { select: { name: true } } },
+      include: {
+        customer: { select: { name: true } },
+        site: { select: { name: true } },
+        feedback: { select: { id: true } },
+      },
     });
 
     return NextResponse.json({ session: session ? mapSession(session) : null });

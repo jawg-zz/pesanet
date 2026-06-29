@@ -25,6 +25,12 @@ function mapSession(s: any): WifiSession {
     macAddress: s.macAddress,
     authMethod: s.authMethod,
     mpesaRef: s.mpesaRef,
+    promoCode: s.promoCode ?? null,
+    discountKES: s.discountKES ?? 0,
+    siteId: s.siteId ?? null,
+    siteName: s.site?.name ?? null,
+    extended: s.extended ?? false,
+    hasFeedback: !!s.feedback,
     customer: s.customer ? { name: s.customer.name } : null,
   };
 }
@@ -102,6 +108,22 @@ export async function POST(req: Request) {
     const sessionDuration = pkg?.durationMinutes ?? 60;
     const endTime = new Date(now.getTime() + sessionDuration * 60 * 1000);
 
+    // Tag the session to a hotspot site: pick the first active site,
+    // or fall back to a random site if none are active.
+    let siteId: string | undefined;
+    const firstActive = await db.hotspotSite.findFirst({
+      where: { status: "active" },
+      select: { id: true },
+    });
+    if (firstActive) {
+      siteId = firstActive.id;
+    } else {
+      const anySite = await db.hotspotSite.findFirst({
+        select: { id: true },
+      });
+      if (anySite) siteId = anySite.id;
+    }
+
     const session = await db.session.create({
       data: {
         customerId: customer.id,
@@ -116,8 +138,13 @@ export async function POST(req: Request) {
         authMethod: "voucher",
         ipAddress: generateFakeIP(),
         macAddress: generateFakeMAC(),
+        ...(siteId ? { siteId } : {}),
       },
-      include: { customer: { select: { name: true } } },
+      include: {
+        customer: { select: { name: true } },
+        site: { select: { name: true } },
+        feedback: { select: { id: true } },
+      },
     });
 
     // silence unused var lint

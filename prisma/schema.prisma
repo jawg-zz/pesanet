@@ -63,7 +63,11 @@ model Session {
   mpesaRef        String?
   promoCode       String?
   discountKES     Int      @default(0)
+  siteId          String?
+  site            HotspotSite? @relation(fields: [siteId], references: [id])
+  extended        Boolean  @default(false)
   createdAt       DateTime @default(now())
+  feedback        Feedback?
 }
 
 model Voucher {
@@ -164,4 +168,39 @@ model Setting {
   id    String @id @default(cuid())
   key   String @unique
   value String
+}
+
+// Hotspot sites / routers — multi-location network management.
+model HotspotSite {
+  id          String    @id @default(cuid())
+  name        String
+  location    String
+  routerIp    String?
+  maxUsers    Int       @default(50)
+  status      String    @default("active") // active, inactive, maintenance
+  createdAt   DateTime  @default(now())
+  sessions    Session[]
+}
+
+// Broadcast announcements shown to customers on the portal.
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  message   String
+  type      String    @default("info") // info, warning, maintenance, promo
+  active    Boolean   @default(true)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// Customer feedback / ratings left after a session ends.
+model Feedback {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  session   Session  @relation(fields: [sessionId], references: [id])
+  customerId String?
+  phone     String
+  rating    Int      // 1..5
+  comment   String?
+  createdAt DateTime @default(now())
 }

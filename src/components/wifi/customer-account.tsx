@@ -494,6 +494,7 @@ function CustomerDashboard({
                 session={s}
                 onDisconnected={load}
                 onExpired={load}
+                onExtended={load}
               />
             ))}
           </div>

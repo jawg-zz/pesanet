@@ -1,20 +1,25 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { motion } from "framer-motion"
+import { useEffect, useMemo, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import {
+  AlertTriangle,
   CreditCard,
   HelpCircle,
+  Info,
   LifeBuoy,
   Loader2,
   Search,
   Send,
   Sparkles,
+  Tag,
   Ticket,
   Wifi,
+  Wrench,
+  X,
   Zap,
 } from "lucide-react"
-import type { WifiPackage, WifiSession } from "@/lib/types"
+import type { Announcement, WifiPackage, WifiSession } from "@/lib/types"
 import {
   PackageCard,
   PackageCardSkeleton,
@@ -50,6 +55,8 @@ export function CustomerPortal() {
   const [selected, setSelected] = useState<WifiPackage | null>(null)
   const [open, setOpen] = useState(false)
   const [activeSession, setActiveSession] = useState<WifiSession | null>(null)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
@@ -64,10 +71,32 @@ export function CustomerPortal() {
       .catch(() => {
         if (active) setLoading(false)
       })
+    // Fetch active announcements for the banner.
+    fetch("/api/announcements")
+      .then((r) => r.json())
+      .then((d) => {
+        if (active) setAnnouncements(d.announcements ?? [])
+      })
+      .catch(() => {
+        /* ignore — banner is non-critical */
+      })
     return () => {
       active = false
     }
   }, [])
+
+  const visibleAnnouncements = useMemo(
+    () => announcements.filter((a) => !dismissed.has(a.id)),
+    [announcements, dismissed]
+  )
+
+  function dismiss(id: string) {
+    setDismissed((s) => {
+      const next = new Set(s)
+      next.add(id)
+      return next
+    })
+  }
 
   function buy(pkg: WifiPackage) {
     setSelected(pkg)
@@ -76,6 +105,9 @@ export function CustomerPortal() {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+      {/* Announcements banner */}
+      <AnnouncementBanner items={visibleAnnouncements} onDismiss={dismiss} />
+
       {/* Hero */}
       <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-emerald-600 to-emerald-700 px-6 py-10 text-primary-foreground shadow-lg sm:px-10 sm:py-14">
         <div className="absolute -right-12 -top-12 size-64 rounded-full bg-white/10 blur-2xl" />
@@ -135,7 +167,10 @@ export function CustomerPortal() {
       {/* Active session inline */}
       {activeSession && (
         <section className="mt-6">
-          <ActiveSessionInline session={activeSession} />
+          <ActiveSessionInline
+            session={activeSession}
+            onExtended={(s) => setActiveSession(s)}
+          />
         </section>
       )}
 
@@ -284,8 +319,96 @@ export function CustomerPortal() {
   )
 }
 
-function ActiveSessionInline({ session }: { session: WifiSession }) {
-  return <ActiveSessionCard session={session} />
+function ActiveSessionInline({
+  session,
+  onExtended,
+}: {
+  session: WifiSession
+  onExtended?: (s: WifiSession) => void
+}) {
+  return <ActiveSessionCard session={session} onExtended={onExtended} />
+}
+
+function announcementTone(type: string) {
+  switch (type) {
+    case "warning":
+      return {
+        wrap: "border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/40 dark:text-amber-100",
+        iconWrap: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        Icon: AlertTriangle,
+      }
+    case "maintenance":
+      return {
+        wrap: "border-orange-300/60 bg-orange-50 text-orange-900 dark:border-orange-700/40 dark:bg-orange-950/40 dark:text-orange-100",
+        iconWrap: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+        Icon: Wrench,
+      }
+    case "promo":
+      return {
+        wrap: "border-emerald-300/60 bg-emerald-50 text-emerald-900 dark:border-emerald-700/40 dark:bg-emerald-950/40 dark:text-emerald-100",
+        iconWrap: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+        Icon: Tag,
+      }
+    default:
+      return {
+        wrap: "border-slate-300/60 bg-slate-50 text-slate-900 dark:border-slate-700/40 dark:bg-slate-900/40 dark:text-slate-100",
+        iconWrap: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+        Icon: Info,
+      }
+  }
+}
+
+function AnnouncementBanner({
+  items,
+  onDismiss,
+}: {
+  items: Announcement[]
+  onDismiss: (id: string) => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div className="mb-5 flex flex-col gap-2">
+      <AnimatePresence initial={false}>
+        {items.map((a) => {
+          const tone = announcementTone(a.type)
+          const Icon = tone.Icon
+          return (
+            <motion.div
+              key={a.id}
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3 shadow-sm ${tone.wrap}`}
+              role="status"
+            >
+              <span
+                className={`grid size-7 shrink-0 place-items-center rounded-md ${tone.iconWrap}`}
+              >
+                <Icon className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-tight">
+                  {a.title}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed opacity-90">
+                  {a.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDismiss(a.id)}
+                aria-label={`Dismiss announcement: ${a.title}`}
+                className="shrink-0 rounded-md p-1 opacity-60 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+              >
+                <X className="size-3.5" />
+              </button>
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 const TICKET_CATEGORIES = [

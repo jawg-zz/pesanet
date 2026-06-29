@@ -6,13 +6,16 @@ import {
   LayoutDashboard,
   LifeBuoy,
   LogOut,
+  Megaphone,
   Menu,
   Package as PackageIcon,
   Percent,
+  RadioTower,
   Receipt,
   Settings,
   ShieldCheck,
   Smartphone,
+  Star,
   Store,
   Ticket,
   Users,
@@ -35,6 +38,9 @@ import { PromosManager } from "@/components/wifi/admin/promos-manager"
 import { TicketsManager } from "@/components/wifi/admin/tickets-manager"
 import { ReportsManager } from "@/components/wifi/admin/reports-manager"
 import { SettingsManager } from "@/components/wifi/admin/settings-manager"
+import { SitesManager } from "@/components/wifi/admin/sites-manager"
+import { AnnouncementsManager } from "@/components/wifi/admin/announcements-manager"
+import { FeedbackManager } from "@/components/wifi/admin/feedback-manager"
 import {
   Sheet,
   SheetContent,
@@ -54,6 +60,9 @@ const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "mai
   { id: "promos", label: "Promo Codes", icon: <Percent className="size-4" />, group: "extensions" },
   { id: "tickets", label: "Support Tickets", icon: <LifeBuoy className="size-4" />, group: "extensions" },
   { id: "reports", label: "Reports", icon: <FileBarChart className="size-4" />, group: "extensions" },
+  { id: "sites", label: "Hotspot Sites", icon: <RadioTower className="size-4" />, group: "extensions" },
+  { id: "announcements", label: "Announcements", icon: <Megaphone className="size-4" />, group: "extensions" },
+  { id: "feedback", label: "Feedback", icon: <Star className="size-4" />, group: "extensions" },
   { id: "settings", label: "Settings", icon: <Settings className="size-4" />, group: "extensions" },
 ]
 
@@ -89,6 +98,12 @@ export function AdminDashboard() {
         return <TicketsManager />
       case "reports":
         return <ReportsManager />
+      case "sites":
+        return <SitesManager />
+      case "announcements":
+        return <AnnouncementsManager />
+      case "feedback":
+        return <FeedbackManager />
       case "settings":
         return <SettingsManager />
       default:
