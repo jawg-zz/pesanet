@@ -1,0 +1,136 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import {
+  validateKePhone,
+  normaliseKePhone,
+  generateFakeIP,
+  generateFakeMAC,
+} from "@/lib/wifi-utils";
+import type { WifiSession } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+function mapSession(s: any): WifiSession {
+  return {
+    id: s.id,
+    phone: s.phone,
+    packageName: s.packageName,
+    priceKES: s.priceKES,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    durationMinutes: s.durationMinutes,
+    status: s.status,
+    dataUsedMB: s.dataUsedMB,
+    ipAddress: s.ipAddress,
+    macAddress: s.macAddress,
+    authMethod: s.authMethod,
+    mpesaRef: s.mpesaRef,
+    customer: s.customer ? { name: s.customer.name } : null,
+  };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { code, phone } = body || {};
+
+    if (!code || !phone) {
+      return NextResponse.json(
+        { error: "Missing code or phone" },
+        { status: 400 }
+      );
+    }
+
+    if (!validateKePhone(String(phone))) {
+      return NextResponse.json(
+        { error: "Invalid phone number" },
+        { status: 400 }
+      );
+    }
+
+    const normalisedPhone = normaliseKePhone(String(phone));
+    const codeUpper = String(code).toUpperCase();
+
+    const voucher = await db.voucher.findUnique({ where: { code: codeUpper } });
+    if (!voucher) {
+      return NextResponse.json(
+        { error: "Invalid voucher code" },
+        { status: 400 }
+      );
+    }
+
+    if (voucher.status !== "unused") {
+      return NextResponse.json(
+        { error: "This voucher has already been used" },
+        { status: 400 }
+      );
+    }
+
+    const customer = await db.customer.upsert({
+      where: { phone: normalisedPhone },
+      update: {},
+      create: { phone: normalisedPhone },
+    });
+
+    const now = new Date();
+    const pkg = await db.package.findUnique({ where: { id: voucher.packageId } });
+
+    // Update voucher to used
+    await db.voucher.update({
+      where: { id: voucher.id },
+      data: {
+        status: "used",
+        usedBy: normalisedPhone,
+        usedAt: now,
+      },
+    });
+
+    // Create transaction
+    const transaction = await db.transaction.create({
+      data: {
+        customerId: customer.id,
+        phone: normalisedPhone,
+        amountKES: voucher.priceKES,
+        packageId: voucher.packageId,
+        packageName: voucher.packageName,
+        method: "voucher",
+        status: "completed",
+      },
+    });
+
+    // Create session — duration from package (fallback 60 min)
+    const sessionDuration = pkg?.durationMinutes ?? 60;
+    const endTime = new Date(now.getTime() + sessionDuration * 60 * 1000);
+
+    const session = await db.session.create({
+      data: {
+        customerId: customer.id,
+        packageId: voucher.packageId,
+        phone: normalisedPhone,
+        packageName: voucher.packageName,
+        priceKES: voucher.priceKES,
+        startTime: now,
+        endTime,
+        durationMinutes: sessionDuration,
+        status: "active",
+        authMethod: "voucher",
+        ipAddress: generateFakeIP(),
+        macAddress: generateFakeMAC(),
+      },
+      include: { customer: { select: { name: true } } },
+    });
+
+    // silence unused var lint
+    void transaction;
+
+    return NextResponse.json({
+      success: true,
+      sessionId: session.id,
+      session: mapSession(session),
+      message: "Voucher redeemed! You are now connected.",
+    });
+  } catch (err) {
+    console.error("POST /api/vouchers/redeem error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

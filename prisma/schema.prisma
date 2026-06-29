@@ -1,0 +1,96 @@
+// WiFi Billing System - Schema for the Kenyan market
+// Supports M-Pesa payments, voucher codes, internet packages and session management.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Package {
+  id                String   @id @default(cuid())
+  name              String
+  priceKES          Int
+  durationMinutes   Int
+  dataLimitMB       Int // 0 = unlimited
+  downloadSpeedMbps Int
+  uploadSpeedMbps   Int
+  description       String
+  popular           Boolean  @default(false)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  sessions          Session[]
+  vouchers          Voucher[]
+  transactions      Transaction[]
+}
+
+model Customer {
+  id           String        @id @default(cuid())
+  phone        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  sessions     Session[]
+  transactions Transaction[]
+}
+
+model Session {
+  id              String   @id @default(cuid())
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id])
+  packageId       String
+  package         Package  @relation(fields: [packageId], references: [id])
+  phone           String
+  packageName     String
+  priceKES        Int
+  startTime       DateTime @default(now())
+  endTime         DateTime
+  durationMinutes Int
+  status          String   @default("active") // active, expired, disconnected
+  dataUsedMB      Int      @default(0)
+  ipAddress       String?
+  macAddress      String?
+  authMethod      String   @default("mpesa") // mpesa, voucher
+  mpesaRef        String?
+  createdAt       DateTime @default(now())
+}
+
+model Voucher {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  packageId   String
+  package     Package   @relation(fields: [packageId], references: [id])
+  packageName String
+  priceKES    Int
+  status      String    @default("unused") // unused, used, expired
+  batchId     String?
+  usedBy      String?
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Transaction {
+  id          String    @id @default(cuid())
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  phone       String
+  amountKES   Int
+  packageId   String?
+  package     Package?  @relation(fields: [packageId], references: [id])
+  packageName String?
+  method      String    @default("mpesa") // mpesa, voucher
+  mpesaRef    String?
+  status      String    @default("pending") // pending, completed, failed
+  createdAt   DateTime  @default(now())
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
