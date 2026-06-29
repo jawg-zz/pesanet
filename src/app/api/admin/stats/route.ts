@@ -27,6 +27,8 @@ export async function GET() {
       todaySessionsAgg,
       vouchersUnusedAgg,
       packagesActiveAgg,
+      openTicketsAgg,
+      activeResellersAgg,
     ] = await Promise.all([
       db.session.count({ where: { status: "active" } }),
       db.session.findMany({
@@ -41,6 +43,10 @@ export async function GET() {
       db.session.count({ where: { startTime: { gte: startOfTodayEAT } } }),
       db.voucher.count({ where: { status: "unused" } }),
       db.package.count({ where: { active: true } }),
+      db.supportTicket.count({
+        where: { status: { in: ["open", "in_progress"] } },
+      }),
+      db.reseller.count({ where: { status: "active" } }),
     ]);
 
     const todayRevenue = todaySessionsRows
@@ -62,6 +68,8 @@ export async function GET() {
       todaySessions: todaySessionsAgg,
       vouchersUnused: vouchersUnusedAgg,
       packagesActive: packagesActiveAgg,
+      openTickets: openTicketsAgg,
+      activeResellers: activeResellersAgg,
     };
 
     return NextResponse.json(stats);

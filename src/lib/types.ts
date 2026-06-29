@@ -29,6 +29,8 @@ export interface WifiSession {
   macAddress: string | null
   authMethod: string // mpesa, voucher
   mpesaRef: string | null
+  promoCode: string | null
+  discountKES: number
   customer?: { name: string | null } | null
 }
 
@@ -40,6 +42,7 @@ export interface WifiVoucher {
   status: string // unused, used, expired
   usedBy: string | null
   usedAt: string | null
+  resellerId: string | null
   createdAt: string
 }
 
@@ -48,9 +51,12 @@ export interface WifiTransaction {
   phone: string
   amountKES: number
   packageName: string | null
-  method: string // mpesa, voucher
+  method: string // mpesa, voucher, reseller
   mpesaRef: string | null
   status: string // pending, completed, failed
+  promoCode: string | null
+  discountKES: number
+  resellerId: string | null
   createdAt: string
 }
 
@@ -62,6 +68,8 @@ export interface AdminStats {
   todaySessions: number
   vouchersUnused: number
   packagesActive: number
+  openTickets: number
+  activeResellers: number
 }
 
 export interface RevenuePoint {
@@ -78,4 +86,84 @@ export interface AdminCustomer {
   totalSpent: number
   sessionCount: number
   lastActive: string | null
+}
+
+// --- New feature types ---
+
+export interface Reseller {
+  id: string
+  phone: string
+  name: string
+  businessName: string | null
+  location: string | null
+  commissionRate: number
+  walletBalanceKES: number
+  totalEarnedKES: number
+  totalSalesKES: number
+  status: string // active, suspended
+  createdAt: string
+}
+
+export interface ResellerStats {
+  walletBalanceKES: number
+  totalEarnedKES: number
+  totalSalesKES: number
+  commissionRate: number
+  vouchersSold: number
+  vouchersUnsold: number
+  recentSales: WifiTransaction[]
+  recentVouchers: WifiVoucher[]
+}
+
+export interface PromoCode {
+  id: string
+  code: string
+  description: string
+  discountType: string // percent, fixed
+  discountValue: number
+  active: boolean
+  usesCount: number
+  maxUses: number // 0 = unlimited
+  expiresAt: string | null
+  createdAt: string
+}
+
+export interface SupportTicket {
+  id: string
+  phone: string
+  customerName: string | null
+  subject: string
+  message: string
+  category: string
+  priority: string // low, normal, high, urgent
+  status: string // open, in_progress, resolved, closed
+  adminReply: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CustomerAccount {
+  id: string
+  phone: string
+  name: string | null
+  email: string | null
+  location: string | null
+  createdAt: string
+  totalSpent: number
+  sessionCount: number
+  activeSessions: WifiSession[]
+  recentSessions: WifiSession[]
+  recentTransactions: WifiTransaction[]
+  tickets: SupportTicket[]
+}
+
+export interface BusinessSettings {
+  [key: string]: string
+}
+
+export interface DiscountPreview {
+  valid: boolean
+  discountKES: number
+  finalAmountKES: number
+  message: string
 }

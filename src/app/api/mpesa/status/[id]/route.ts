@@ -58,6 +58,23 @@ export async function GET(
         data: { status: "completed", mpesaRef },
       });
 
+      // Increment promo code usage counter (if one was used)
+      if (updatedTx.promoCode) {
+        try {
+          const promo = await db.promoCode.findUnique({
+            where: { code: updatedTx.promoCode },
+          });
+          if (promo) {
+            await db.promoCode.update({
+              where: { id: promo.id },
+              data: { usesCount: promo.usesCount + 1 },
+            });
+          }
+        } catch (e) {
+          console.error("Failed to increment promo usesCount:", e);
+        }
+      }
+
       let sessionId: string | null = null;
       if (updatedTx.packageId) {
         const pkg = await db.package.findUnique({
@@ -83,6 +100,8 @@ export async function GET(
               mpesaRef,
               ipAddress: generateFakeIP(),
               macAddress: generateFakeMAC(),
+              promoCode: updatedTx.promoCode ?? null,
+              discountKES: updatedTx.discountKES ?? 0,
             },
           });
           sessionId = session.id;

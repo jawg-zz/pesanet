@@ -1,11 +1,51 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { Wifi, ShieldCheck, Smartphone, Globe } from "lucide-react"
+import {
+  Globe,
+  Moon,
+  ShieldCheck,
+  Smartphone,
+  Store,
+  Sun,
+  UserCircle,
+  Wifi,
+} from "lucide-react"
+import { useTheme } from "next-themes"
 import { useAppStore } from "@/lib/store"
 import { CustomerPortal } from "@/components/wifi/customer-portal"
+import { CustomerAccount } from "@/components/wifi/customer-account"
+import { ResellerPortal } from "@/components/wifi/reseller-portal"
 import { AdminDashboard } from "@/components/wifi/admin-dashboard"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+
+const VIEWS = [
+  { id: "customer", label: "Customer Portal", short: "Customer", icon: Smartphone },
+  { id: "account", label: "My Account", short: "Account", icon: UserCircle },
+  { id: "reseller", label: "Reseller", short: "Reseller", icon: Store },
+  { id: "admin", label: "Admin Dashboard", short: "Admin", icon: ShieldCheck },
+] as const
+
+function ThemeToggle() {
+  const { setTheme, resolvedTheme } = useTheme()
+  // Icons are toggled purely via CSS (dark: variant) so there is no
+  // hydration mismatch and no need for a mounted flag.
+  const toggle = () => setTheme(resolvedTheme === "dark" ? "light" : "dark")
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={toggle}
+      aria-label="Toggle dark mode"
+      title="Toggle dark mode"
+      className="relative h-9 w-9"
+    >
+      <Sun className="size-4 hidden dark:block" />
+      <Moon className="size-4 block dark:hidden" />
+    </Button>
+  )
+}
 
 export default function Home() {
   const view = useAppStore((s) => s.view)
@@ -15,61 +55,82 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
               <Wifi className="size-5" />
             </div>
-            <div className="flex flex-col leading-tight">
+            <div className="hidden flex-col leading-tight sm:flex">
               <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
                 PesaNet
                 <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                   Kenya
                 </span>
               </span>
-              <span className="hidden text-xs text-muted-foreground sm:block">
+              <span className="text-xs text-muted-foreground">
                 Prepaid WiFi billing
               </span>
             </div>
           </div>
 
-          {/* View toggle */}
+          {/* View switcher (desktop) */}
           <nav
             aria-label="Switch view"
-            className="flex items-center rounded-full border bg-muted/60 p-1"
+            className="hidden items-center gap-1 rounded-full border bg-muted/60 p-1 md:flex"
           >
-            <button
-              type="button"
-              onClick={() => setView("customer")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all sm:px-4 sm:text-sm",
-                view === "customer"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              aria-pressed={view === "customer"}
-            >
-              <Smartphone className="size-4" />
-              <span className="hidden sm:inline">Customer Portal</span>
-              <span className="sm:hidden">Customer</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("admin")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all sm:px-4 sm:text-sm",
-                view === "admin"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              aria-pressed={view === "admin"}
-            >
-              <ShieldCheck className="size-4" />
-              <span className="hidden sm:inline">Admin Dashboard</span>
-              <span className="sm:hidden">Admin</span>
-            </button>
+            {VIEWS.map((v) => {
+              const Icon = v.icon
+              const active = view === v.id
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setView(v.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all lg:px-4 lg:text-sm",
+                    active
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  aria-pressed={active}
+                >
+                  <Icon className="size-4" />
+                  <span>{v.label}</span>
+                </button>
+              )
+            })}
           </nav>
+
+          {/* Right side: dark mode toggle (mobile shows compact view switch) */}
+          <div className="flex items-center gap-2">
+            {/* Compact view switcher (mobile) */}
+            <div className="flex items-center gap-1 rounded-full border bg-muted/60 p-1 md:hidden">
+              {VIEWS.map((v) => {
+                const Icon = v.icon
+                const active = view === v.id
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setView(v.id)}
+                    className={cn(
+                      "grid size-7 place-items-center rounded-full transition-all",
+                      active
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    aria-pressed={active}
+                    aria-label={v.label}
+                    title={v.label}
+                  >
+                    <Icon className="size-4" />
+                  </button>
+                )
+              })}
+            </div>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -83,7 +144,10 @@ export default function Home() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            {view === "customer" ? <CustomerPortal /> : <AdminDashboard />}
+            {view === "customer" && <CustomerPortal />}
+            {view === "account" && <CustomerAccount />}
+            {view === "reseller" && <ResellerPortal />}
+            {view === "admin" && <AdminDashboard />}
           </motion.div>
         </AnimatePresence>
       </main>

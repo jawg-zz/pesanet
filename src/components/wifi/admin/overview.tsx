@@ -13,7 +13,9 @@ import {
 } from "recharts"
 import {
   Activity,
+  LifeBuoy,
   Receipt,
+  Store,
   TrendingUp,
   Users,
   Wallet,
@@ -142,14 +144,14 @@ export function AdminOverview() {
           icon={<Receipt className="size-4" />}
         />
         <MiniStat
-          label="Active packages"
-          value={stats?.packagesActive ?? 0}
-          icon={<TrendingUp className="size-4" />}
+          label="Open tickets"
+          value={stats?.openTickets ?? 0}
+          icon={<LifeBuoy className="size-4" />}
         />
         <MiniStat
-          label="7-day revenue"
-          value={formatKES(totalRevenue7d)}
-          icon={<Wallet className="size-4" />}
+          label="Active resellers"
+          value={stats?.activeResellers ?? 0}
+          icon={<Store className="size-4" />}
         />
       </div>
 

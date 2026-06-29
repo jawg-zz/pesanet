@@ -5,7 +5,10 @@ import { motion } from "framer-motion"
 import {
   CreditCard,
   HelpCircle,
+  LifeBuoy,
+  Loader2,
   Search,
+  Send,
   Sparkles,
   Ticket,
   Wifi,
@@ -26,6 +29,20 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { ActiveSessionCard } from "@/components/wifi/active-session-card"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useToast } from "@/hooks/use-toast"
+import { validateKePhone } from "@/lib/wifi-utils"
 
 export function CustomerPortal() {
   const [packages, setPackages] = useState<WifiPackage[]>([])
@@ -252,6 +269,11 @@ export function CustomerPortal() {
         </div>
       </section>
 
+      {/* Support / Need help? */}
+      <section className="mt-10">
+        <SupportCard />
+      </section>
+
       <MpesaModal
         pkg={selected}
         open={open}
@@ -264,4 +286,190 @@ export function CustomerPortal() {
 
 function ActiveSessionInline({ session }: { session: WifiSession }) {
   return <ActiveSessionCard session={session} />
+}
+
+const TICKET_CATEGORIES = [
+  { value: "billing", label: "Billing / Payment" },
+  { value: "connectivity", label: "Connectivity / Speed" },
+  { value: "voucher", label: "Voucher issue" },
+  { value: "account", label: "Account access" },
+  { value: "other", label: "Other" },
+]
+
+const TICKET_PRIORITIES = [
+  { value: "low", label: "Low" },
+  { value: "normal", label: "Normal" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+]
+
+function SupportCard() {
+  const { toast } = useToast()
+  const [phone, setPhone] = useState("")
+  const [name, setName] = useState("")
+  const [subject, setSubject] = useState("")
+  const [message, setMessage] = useState("")
+  const [category, setCategory] = useState("billing")
+  const [priority, setPriority] = useState("normal")
+  const [submitting, setSubmitting] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validateKePhone(phone)) {
+      toast({
+        title: "Invalid phone",
+        description: "Enter a valid Kenyan number (07XXXXXXXX or 01XXXXXXXX).",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!subject.trim() || !message.trim()) {
+      toast({
+        title: "Missing details",
+        description: "Please provide a subject and message.",
+        variant: "destructive",
+      })
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          customerName: name.trim() || undefined,
+          subject: subject.trim(),
+          message: message.trim(),
+          category,
+          priority,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || data.message || "Could not submit ticket")
+      }
+      toast({
+        title: "Ticket submitted 🎉",
+        description: "Our support team will get back to you shortly.",
+      })
+      setSubject("")
+      setMessage("")
+      setName("")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not submit ticket"
+      toast({
+        title: "Submission failed",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden py-0">
+      <div className="bg-gradient-to-r from-primary to-emerald-600 px-5 py-4 text-primary-foreground sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-lg bg-white/15">
+            <LifeBuoy className="size-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold">Need help? Get support</h3>
+            <p className="text-xs text-primary-foreground/90">
+              Submit a ticket and our team will respond as soon as possible.
+            </p>
+          </div>
+        </div>
+      </div>
+      <CardContent className="px-5 py-5 sm:px-6">
+        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ticket-phone">Phone number *</Label>
+            <Input
+              id="ticket-phone"
+              inputMode="tel"
+              placeholder="07XX XXX XXX"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ticket-name">Your name (optional)</Label>
+            <Input
+              id="ticket-name"
+              placeholder="John Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="ticket-subject">Subject *</Label>
+            <Input
+              id="ticket-subject"
+              placeholder="Briefly describe the issue"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ticket-cat">Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger id="ticket-cat" className="w-full">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {TICKET_CATEGORIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ticket-pri">Priority</Label>
+            <Select value={priority} onValueChange={setPriority}>
+              <SelectTrigger id="ticket-pri" className="w-full">
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {TICKET_PRIORITIES.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="ticket-msg">Message *</Label>
+            <Textarea
+              id="ticket-msg"
+              placeholder="Describe your issue in detail…"
+              rows={4}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
+              {submitting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Submitting…
+                </>
+              ) : (
+                <>
+                  <Send className="size-4" />
+                  Submit ticket
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
 }

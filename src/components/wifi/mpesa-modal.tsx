@@ -9,6 +9,9 @@ import {
   Lock,
   Phone,
   Smartphone,
+  Sparkles,
+  Tag,
+  X,
   XCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,7 +25,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import type { WifiPackage, WifiSession } from "@/lib/types"
+import type { DiscountPreview, WifiPackage, WifiSession } from "@/lib/types"
 import {
   formatDuration,
   formatKES,
@@ -61,6 +64,15 @@ export function MpesaModal({
   const [submitting, setSubmitting] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Promo code state
+  const [promoInput, setPromoInput] = useState("")
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null)
+  const [discount, setDiscount] = useState<DiscountPreview | null>(null)
+  const [validating, setValidating] = useState(false)
+
+  const finalAmount = discount?.valid ? discount.finalAmountKES : pkg?.priceKES ?? 0
+  const hasDiscount = discount?.valid && (discount.discountKES ?? 0) > 0
+
   // Reset when closed / opened fresh.
   useEffect(() => {
     if (open) {
@@ -69,6 +81,9 @@ export function MpesaModal({
       setMpesaRef(null)
       setSession(null)
       setSubmitting(false)
+      setPromoInput("")
+      setAppliedPromo(null)
+      setDiscount(null)
     }
   }, [open])
 
@@ -88,6 +103,58 @@ export function MpesaModal({
 
   if (!pkg) return null
 
+  async function applyPromo() {
+    const code = promoInput.trim().toUpperCase()
+    if (!code) {
+      toast({
+        title: "Enter code",
+        description: "Please enter a promo code.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!pkg) return
+    setValidating(true)
+    try {
+      const res = await fetch("/api/promos/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, amountKES: pkg.priceKES }),
+      })
+      const data = (await res.json()) as DiscountPreview
+      if (!res.ok || !data.valid) {
+        setAppliedPromo(null)
+        setDiscount({ ...data, valid: false })
+        toast({
+          title: "Promo not applied",
+          description: data.message || "Invalid promo code.",
+          variant: "destructive",
+        })
+        return
+      }
+      setAppliedPromo(code)
+      setDiscount(data)
+      toast({
+        title: "Promo applied 🎉",
+        description: `${formatKES(data.discountKES)} off — pay ${formatKES(data.finalAmountKES)}.`,
+      })
+    } catch {
+      toast({
+        title: "Error",
+        description: "Could not validate promo code.",
+        variant: "destructive",
+      })
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  function clearPromo() {
+    setPromoInput("")
+    setAppliedPromo(null)
+    setDiscount(null)
+  }
+
   async function sendStk() {
     if (!pkg) return
     if (!validateKePhone(phone)) {
@@ -100,10 +167,15 @@ export function MpesaModal({
     }
     setSubmitting(true)
     try {
+      const body: Record<string, unknown> = {
+        phone: phone.trim(),
+        packageId: pkg.id,
+      }
+      if (appliedPromo) body.promoCode = appliedPromo
       const res = await fetch("/api/mpesa/stk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.trim(), packageId: pkg.id }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || "Failed to send STK push")
@@ -143,14 +215,16 @@ export function MpesaModal({
               )
               if (sres.ok) {
                 const sdata = (await sres.json()) as { session: WifiSession | null }
-                if (sdata.session) setSession(sdata.session)
+                if (sdata.session) {
+                  setSession(sdata.session)
+                  onSuccess?.(sdata.session)
+                }
               }
             } catch {
               /* ignore */
             }
           }
           setStep("success")
-          if (data.sessionId && session) onSuccess?.(session)
         } else if (data.status === "failed") {
           if (pollRef.current) {
             clearInterval(pollRef.current)
@@ -170,7 +244,6 @@ export function MpesaModal({
       pollRef.current = null
     }
     onOpenChange(open)
-    if (!open && session) onSuccess?.(session)
   }
 
   return (
@@ -218,10 +291,81 @@ export function MpesaModal({
                 <Separator className="my-3" />
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Total</span>
-                  <span className="text-xl font-bold text-primary">
-                    {formatKES(pkg.priceKES)}
-                  </span>
+                  <div className="flex flex-col items-end">
+                    {hasDiscount && (
+                      <span className="text-xs text-muted-foreground line-through">
+                        {formatKES(pkg.priceKES)}
+                      </span>
+                    )}
+                    <span className="text-xl font-bold text-primary">
+                      {formatKES(finalAmount)}
+                    </span>
+                    {hasDiscount && (
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                        saved {formatKES(discount?.discountKES ?? 0)}
+                      </span>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Promo code section */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mpesa-promo" className="flex items-center gap-1.5">
+                  <Tag className="size-3.5 text-primary" />
+                  Promo code <span className="text-muted-foreground">(optional)</span>
+                </Label>
+                {appliedPromo ? (
+                  <div className="flex items-center justify-between rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="size-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="font-mono font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                        {appliedPromo}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        −{formatKES(discount?.discountKES ?? 0)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearPromo}
+                      aria-label="Remove promo"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      id="mpesa-promo"
+                      placeholder="e.g. WELCOME10"
+                      value={promoInput}
+                      onChange={(e) =>
+                        setPromoInput(e.target.value.toUpperCase())
+                      }
+                      className="font-mono tracking-wide"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") applyPromo()
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={applyPromo}
+                      disabled={validating || !promoInput.trim()}
+                    >
+                      {validating ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        "Apply"
+                      )}
+                    </Button>
+                  </div>
+                )}
+                {discount && !discount.valid && (
+                  <p className="text-xs text-destructive">{discount.message}</p>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -256,7 +400,7 @@ export function MpesaModal({
                 ) : (
                   <>
                     <Lock className="size-4" />
-                    Send STK Push · {formatKES(pkg.priceKES)}
+                    Send STK Push · {formatKES(finalAmount)}
                   </>
                 )}
               </Button>
@@ -307,8 +451,11 @@ export function MpesaModal({
                       </div>
                     </div>
                     <div className="flex flex-col gap-2 px-3 py-3 text-xs">
-                      <Row label="Amount" value={formatKES(pkg.priceKES)} />
+                      <Row label="Amount" value={formatKES(finalAmount)} />
                       <Row label="Account" value="PesaNet" />
+                      {appliedPromo && (
+                        <Row label="Promo" value={appliedPromo} />
+                      )}
                       <Separator className="my-1" />
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">
@@ -357,7 +504,7 @@ export function MpesaModal({
               <div>
                 <h3 className="text-lg font-bold">You're now connected!</h3>
                 <p className="text-sm text-muted-foreground">
-                  Payment of {formatKES(pkg.priceKES)} received.
+                  Payment of {formatKES(finalAmount)} received.
                 </p>
               </div>
 

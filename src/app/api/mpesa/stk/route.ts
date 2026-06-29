@@ -4,10 +4,73 @@ import { validateKePhone, normaliseKePhone } from "@/lib/wifi-utils";
 
 export const dynamic = "force-dynamic";
 
+interface PromoValidation {
+  valid: boolean;
+  discountKES: number;
+  finalAmountKES: number;
+  message: string;
+  promoId?: string;
+  code?: string;
+}
+
+/** Validate a promo code against an amount, returning the discount + final amount. */
+async function validatePromo(
+  rawCode: string,
+  amountKES: number
+): Promise<PromoValidation> {
+  const code = String(rawCode).toUpperCase().trim();
+  const promo = await db.promoCode.findUnique({ where: { code } });
+
+  if (!promo || !promo.active) {
+    return {
+      valid: false,
+      discountKES: 0,
+      finalAmountKES: amountKES,
+      message: "Invalid promo code",
+    };
+  }
+
+  if (promo.expiresAt && promo.expiresAt.getTime() < Date.now()) {
+    return {
+      valid: false,
+      discountKES: 0,
+      finalAmountKES: amountKES,
+      message: "This promo code has expired",
+    };
+  }
+
+  if (promo.maxUses > 0 && promo.usesCount >= promo.maxUses) {
+    return {
+      valid: false,
+      discountKES: 0,
+      finalAmountKES: amountKES,
+      message: "Promo code usage limit reached",
+    };
+  }
+
+  let discountKES = 0;
+  if (promo.discountType === "percent") {
+    discountKES = Math.round((amountKES * promo.discountValue) / 100);
+  } else if (promo.discountType === "fixed") {
+    discountKES = Math.min(promo.discountValue, amountKES);
+  }
+
+  const finalAmountKES = Math.max(0, amountKES - discountKES);
+
+  return {
+    valid: true,
+    discountKES,
+    finalAmountKES,
+    message: `Promo applied: ${promo.description}`,
+    promoId: promo.id,
+    code: promo.code,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { phone, packageId } = body || {};
+    const { phone, packageId, promoCode } = body || {};
 
     if (!phone || !packageId) {
       return NextResponse.json(
@@ -33,6 +96,20 @@ export async function POST(req: Request) {
 
     const normalisedPhone = normaliseKePhone(String(phone));
 
+    // Validate promo code if provided
+    let promo: PromoValidation | null = null;
+    if (promoCode && String(promoCode).trim().length > 0) {
+      promo = await validatePromo(String(promoCode), pkg.priceKES);
+      if (!promo.valid) {
+        return NextResponse.json(
+          { error: "Invalid or expired promo code" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const chargedAmount = promo ? promo.finalAmountKES : pkg.priceKES;
+
     const customer = await db.customer.upsert({
       where: { phone: normalisedPhone },
       update: {},
@@ -43,18 +120,24 @@ export async function POST(req: Request) {
       data: {
         customerId: customer.id,
         phone: normalisedPhone,
-        amountKES: pkg.priceKES,
+        amountKES: chargedAmount,
         packageId: pkg.id,
         packageName: pkg.name,
         method: "mpesa",
         status: "pending",
+        promoCode: promo?.code ?? null,
+        discountKES: promo?.discountKES ?? 0,
       },
     });
+
+    const message = promo
+      ? `STK push sent to ${normalisedPhone} for KES ${chargedAmount} (discount KES ${promo.discountKES} applied). Enter your M-Pesa PIN to complete.`
+      : `STK push sent to ${normalisedPhone}. Enter your M-Pesa PIN to complete.`;
 
     return NextResponse.json({
       transactionId: transaction.id,
       status: "pending",
-      message: `STK push sent to ${normalisedPhone}. Enter your M-Pesa PIN to complete.`,
+      message,
     });
   } catch (err) {
     console.error("POST /api/mpesa/stk error:", err);

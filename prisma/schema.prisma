@@ -1,5 +1,6 @@
 // WiFi Billing System - Schema for the Kenyan market
-// Supports M-Pesa payments, voucher codes, internet packages and session management.
+// Supports M-Pesa payments, voucher codes, internet packages, session management,
+// reseller/agent program, promo codes, support tickets and business settings.
 
 generator client {
   provider = "prisma-client-js"
@@ -32,9 +33,14 @@ model Customer {
   id           String        @id @default(cuid())
   phone        String        @unique
   name         String?
+  email        String?
+  location     String?
+  otpCode      String?
+  otpExpires   DateTime?
   createdAt    DateTime      @default(now())
   sessions     Session[]
   transactions Transaction[]
+  tickets      SupportTicket[]
 }
 
 model Session {
@@ -55,6 +61,8 @@ model Session {
   macAddress      String?
   authMethod      String   @default("mpesa") // mpesa, voucher
   mpesaRef        String?
+  promoCode       String?
+  discountKES     Int      @default(0)
   createdAt       DateTime @default(now())
 }
 
@@ -69,6 +77,8 @@ model Voucher {
   batchId     String?
   usedBy      String?
   usedAt      DateTime?
+  resellerId  String?
+  reseller    Reseller? @relation(fields: [resellerId], references: [id])
   createdAt   DateTime  @default(now())
 }
 
@@ -81,9 +91,13 @@ model Transaction {
   packageId   String?
   package     Package?  @relation(fields: [packageId], references: [id])
   packageName String?
-  method      String    @default("mpesa") // mpesa, voucher
+  method      String    @default("mpesa") // mpesa, voucher, reseller
   mpesaRef    String?
   status      String    @default("pending") // pending, completed, failed
+  promoCode   String?
+  discountKES Int       @default(0)
+  resellerId  String?
+  reseller    Reseller? @relation(fields: [resellerId], references: [id])
   createdAt   DateTime  @default(now())
 }
 
@@ -93,4 +107,61 @@ model AdminUser {
   passwordHash String
   name         String
   createdAt    DateTime @default(now())
+}
+
+// Reseller / Agent program — partners who sell vouchers at a commission.
+model Reseller {
+  id               String        @id @default(cuid())
+  phone            String        @unique
+  name             String
+  businessName     String?
+  location         String?
+  commissionRate   Float         @default(10) // percentage 0..100
+  walletBalanceKES Int           @default(0)
+  totalEarnedKES   Int           @default(0)
+  totalSalesKES    Int           @default(0)
+  status           String        @default("active") // active, suspended
+  otpCode          String?
+  otpExpires       DateTime?
+  createdAt        DateTime      @default(now())
+  vouchers         Voucher[]
+  transactions     Transaction[]
+}
+
+// Promo / discount codes applicable at M-Pesa checkout.
+model PromoCode {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  description   String
+  discountType  String    // percent, fixed
+  discountValue Float
+  active        Boolean   @default(true)
+  usesCount     Int       @default(0)
+  maxUses       Int       @default(0) // 0 = unlimited
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+// Support tickets raised by customers and resolved by admins.
+model SupportTicket {
+  id           String   @id @default(cuid())
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  phone        String
+  customerName String?
+  subject      String
+  message      String
+  category     String   @default("general") // general, billing, connectivity, voucher, other
+  priority     String   @default("normal") // low, normal, high, urgent
+  status       String   @default("open") // open, in_progress, resolved, closed
+  adminReply   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Key/value business settings (business name, M-Pesa paybill, support phone...).
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
 }

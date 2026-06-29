@@ -2,12 +2,18 @@
 
 import { useState } from "react"
 import {
+  FileBarChart,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Package as PackageIcon,
+  Percent,
   Receipt,
+  Settings,
+  ShieldCheck,
   Smartphone,
+  Store,
   Ticket,
   Users,
   Wifi,
@@ -24,6 +30,11 @@ import { PackagesManager } from "@/components/wifi/admin/packages-manager"
 import { VouchersManager } from "@/components/wifi/admin/vouchers-manager"
 import { TransactionsManager } from "@/components/wifi/admin/transactions-manager"
 import { CustomersManager } from "@/components/wifi/admin/customers-manager"
+import { ResellersManager } from "@/components/wifi/admin/resellers-manager"
+import { PromosManager } from "@/components/wifi/admin/promos-manager"
+import { TicketsManager } from "@/components/wifi/admin/tickets-manager"
+import { ReportsManager } from "@/components/wifi/admin/reports-manager"
+import { SettingsManager } from "@/components/wifi/admin/settings-manager"
 import {
   Sheet,
   SheetContent,
@@ -32,13 +43,18 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-const NAV: { id: AdminSection; label: string; icon: React.ReactNode }[] = [
-  { id: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
-  { id: "sessions", label: "Sessions", icon: <Wifi className="size-4" /> },
-  { id: "packages", label: "Packages", icon: <PackageIcon className="size-4" /> },
-  { id: "vouchers", label: "Vouchers", icon: <Ticket className="size-4" /> },
-  { id: "transactions", label: "Transactions", icon: <Receipt className="size-4" /> },
-  { id: "customers", label: "Customers", icon: <Users className="size-4" /> },
+const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "main" | "extensions" }[] = [
+  { id: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" />, group: "main" },
+  { id: "sessions", label: "Sessions", icon: <Wifi className="size-4" />, group: "main" },
+  { id: "packages", label: "Packages", icon: <PackageIcon className="size-4" />, group: "main" },
+  { id: "vouchers", label: "Vouchers", icon: <Ticket className="size-4" />, group: "main" },
+  { id: "transactions", label: "Transactions", icon: <Receipt className="size-4" />, group: "main" },
+  { id: "customers", label: "Customers", icon: <Users className="size-4" />, group: "main" },
+  { id: "resellers", label: "Resellers", icon: <Store className="size-4" />, group: "extensions" },
+  { id: "promos", label: "Promo Codes", icon: <Percent className="size-4" />, group: "extensions" },
+  { id: "tickets", label: "Support Tickets", icon: <LifeBuoy className="size-4" />, group: "extensions" },
+  { id: "reports", label: "Reports", icon: <FileBarChart className="size-4" />, group: "extensions" },
+  { id: "settings", label: "Settings", icon: <Settings className="size-4" />, group: "extensions" },
 ]
 
 export function AdminDashboard() {
@@ -65,6 +81,16 @@ export function AdminDashboard() {
         return <TransactionsManager />
       case "customers":
         return <CustomersManager />
+      case "resellers":
+        return <ResellersManager />
+      case "promos":
+        return <PromosManager />
+      case "tickets":
+        return <TicketsManager />
+      case "reports":
+        return <ReportsManager />
+      case "settings":
+        return <SettingsManager />
       default:
         return <AdminOverview />
     }
@@ -72,7 +98,33 @@ export function AdminDashboard() {
 
   const SidebarContent = (
     <nav className="flex flex-col gap-1">
-      {NAV.map((item) => (
+      <div className="mb-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Main
+      </div>
+      {NAV.filter((n) => n.group === "main").map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => {
+            setAdminSection(item.id)
+            setMobileOpen(false)
+          }}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            adminSection === item.id
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          )}
+          aria-current={adminSection === item.id ? "page" : undefined}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+      <div className="mb-1 mt-3 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Extensions
+      </div>
+      {NAV.filter((n) => n.group === "extensions").map((item) => (
         <button
           key={item.id}
           type="button"
@@ -107,10 +159,10 @@ export function AdminDashboard() {
                 <span className="sr-only">Open navigation</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-72">
+            <SheetContent side="left" className="w-72 overflow-y-auto">
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2">
-                  <Wifi className="size-4 text-primary" />
+                  <ShieldCheck className="size-4 text-primary" />
                   PesaNet Admin
                 </SheetTitle>
               </SheetHeader>
@@ -155,9 +207,6 @@ export function AdminDashboard() {
           <div className="sticky top-24">
             <Card className="bg-card/60 backdrop-blur">
               <div className="p-3">
-                <div className="mb-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Navigation
-                </div>
                 {SidebarContent}
               </div>
             </Card>
