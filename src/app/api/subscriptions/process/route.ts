@@ -105,7 +105,24 @@ export async function POST() {
         console.error("Failed to award auto-renew loyalty points:", e);
       }
 
-      // 4. Advance the subscription schedule.
+      // 4. Tell the network backend to activate the hotspot user.
+      try {
+        const { getNetworkProvider } = await import("@/lib/network-provider")
+        const provider = await getNetworkProvider(fallbackSiteId)
+        void provider.activate({
+          username: sub.phone,
+          password: sub.phone,
+          timeoutMinutes: minutes,
+          downloadMbps: pkg?.downloadSpeedMbps ?? 0,
+          uploadMbps: pkg?.uploadSpeedMbps ?? 0,
+          sessionId: tx.id, // best-effort link
+          phone: sub.phone,
+        })
+      } catch (e) {
+        console.error("Network backend activate (auto-renew) failed:", e);
+      }
+
+      // 5. Advance the subscription schedule.
       const nextChargeAt = new Date(now.getTime() + minutes * 60 * 1000);
       await db.subscription.update({
         where: { id: sub.id },

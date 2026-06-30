@@ -186,6 +186,11 @@ export interface HotspotSite {
   routerIp: string | null
   maxUsers: number
   status: string // active, inactive, maintenance
+  networkBackend: string // none, mikrotik, radius
+  backendHost: string | null
+  backendPort: number
+  backendUser: string | null
+  backendRadiusHost: string | null
   createdAt: string
   activeSessions: number
   totalSessions: number
@@ -303,4 +308,38 @@ export interface SubscriptionEntry {
   lastChargedAt: string | null
   customerName: string | null
   createdAt: string
+}
+
+// --- Network backend types ---
+
+export type NetworkBackend = "none" | "mikrotik" | "radius"
+
+export interface NetworkEventEntry {
+  id: string
+  siteId: string | null
+  siteName: string | null
+  sessionId: string | null
+  phone: string | null
+  action: string // activate, disconnect, extend, sync, test, error
+  backend: string // mikrotik, radius, simulation
+  status: string // success, error
+  message: string
+  durationMs: number
+  createdAt: string
+}
+
+export interface NetworkActionResult {
+  success: boolean
+  backend: string
+  message: string
+  durationMs: number
+}
+
+export interface LiveRouterSession {
+  username: string
+  ip: string
+  mac: string
+  uptimeSeconds: number
+  rxBytes: number
+  txBytes: number
 }

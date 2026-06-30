@@ -124,6 +124,27 @@ export async function GET(
             },
           });
           sessionId = session.id;
+
+          // Provision the connection on the real network backend
+          // (MikroTik / RADIUS / simulation). Non-blocking on success —
+          // the session is already billed; a backend failure is logged but
+          // does not roll back the payment.
+          try {
+            const { getNetworkProvider } = await import("@/lib/network-provider")
+            const provider = await getNetworkProvider(siteId)
+            void provider.activate({
+              username: updatedTx.phone,
+              password: updatedTx.phone,
+              timeoutMinutes: pkg.durationMinutes,
+              downloadMbps: pkg.downloadSpeedMbps,
+              uploadMbps: pkg.uploadSpeedMbps,
+              mac: session.macAddress ?? undefined,
+              sessionId: session.id,
+              phone: updatedTx.phone,
+            })
+          } catch (e) {
+            console.error("Network backend activate failed:", e)
+          }
         }
       }
 

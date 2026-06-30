@@ -41,6 +41,7 @@ import type { RouterHealth } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { formatUptime } from "@/lib/wifi-utils"
+import { NetworkBackendPanel } from "@/components/wifi/admin/network-backend-panel"
 
 function statusTone(status: string) {
   switch (status) {
@@ -214,6 +215,9 @@ export function NetworkManager() {
           tone="emerald"
         />
       </div>
+
+      {/* Network backend configuration + audit log */}
+      <NetworkBackendPanel />
 
       <Card className="py-0">
         <CardHeader className="flex-row items-center justify-between px-5 pt-5">

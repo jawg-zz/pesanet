@@ -53,6 +53,15 @@ export async function PATCH(
       include: { customer: { select: { name: true } } },
     });
 
+    // Tell the network backend to kick the live connection.
+    try {
+      const { getNetworkProvider } = await import("@/lib/network-provider")
+      const provider = await getNetworkProvider(existing.siteId)
+      void provider.disconnect(existing.phone, existing.id, existing.phone)
+    } catch (e) {
+      console.error("Network backend disconnect failed:", e)
+    }
+
     return NextResponse.json({ session: mapSession(updated) });
   } catch (err) {
     console.error("PATCH /api/sessions/[id] error:", err);

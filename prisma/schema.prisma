@@ -181,15 +181,39 @@ model Setting {
 
 // Hotspot sites / routers — multi-location network management.
 model HotspotSite {
-  id          String    @id @default(cuid())
-  name        String
-  location    String
-  routerIp    String?
-  maxUsers    Int       @default(50)
-  status      String    @default("active") // active, inactive, maintenance
-  createdAt   DateTime  @default(now())
-  sessions    Session[]
-  routerStatus RouterStatus?
+  id              String    @id @default(cuid())
+  name            String
+  location        String
+  routerIp        String?
+  maxUsers        Int       @default(50)
+  status          String    @default("active") // active, inactive, maintenance
+  // Network backend selection + credentials for enforcing connections.
+  networkBackend  String    @default("none") // none, mikrotik, radius
+  backendHost     String?   // MikroTik API host or RADIUS NAS — usually same as routerIp
+  backendPort     Int       @default(8728)   // MikroTik API 8728/8729, RADIUS CoA 3799
+  backendUser     String?   // MikroTik API username (RADIUS leaves null)
+  backendPass     String?   // MikroTik API password (RADIUS shared secret)
+  backendRadiusHost String? // FreeRADIUS server host (for RADIUS mode, where to write users)
+  backendRadiusSecret String? // RADIUS shared secret
+  createdAt       DateTime  @default(now())
+  sessions        Session[]
+  routerStatus    RouterStatus?
+  networkEvents   NetworkEvent[]
+}
+
+// Audit log of every network-backend operation (activate, disconnect, extend, sync, test).
+model NetworkEvent {
+  id          String   @id @default(cuid())
+  siteId      String?
+  site        HotspotSite? @relation(fields: [siteId], references: [id])
+  sessionId   String?
+  phone       String?
+  action      String   // activate, disconnect, extend, sync, test, error
+  backend     String   // mikrotik, radius, simulation
+  status      String   // success, error
+  message     String
+  durationMs  Int      @default(0)
+  createdAt   DateTime @default(now())
 }
 
 // Broadcast announcements shown to customers on the portal.

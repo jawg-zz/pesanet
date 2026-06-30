@@ -16,6 +16,11 @@ function mapSite(
     routerIp: s.routerIp ?? null,
     maxUsers: s.maxUsers,
     status: s.status,
+    networkBackend: s.networkBackend ?? "none",
+    backendHost: s.backendHost ?? null,
+    backendPort: s.backendPort ?? 8728,
+    backendUser: s.backendUser ?? null,
+    backendRadiusHost: s.backendRadiusHost ?? null,
     createdAt: s.createdAt,
     activeSessions,
     totalSessions,
@@ -51,7 +56,20 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, location, routerIp, maxUsers, status } = body || {};
+    const {
+      name,
+      location,
+      routerIp,
+      maxUsers,
+      status,
+      networkBackend,
+      backendHost,
+      backendPort,
+      backendUser,
+      backendPass,
+      backendRadiusHost,
+      backendRadiusSecret,
+    } = body || {};
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json(
@@ -84,6 +102,27 @@ export async function POST(req: Request) {
       const n = Number(maxUsers);
       if (Number.isFinite(n) && n > 0) data.maxUsers = Math.floor(n);
     }
+
+    // Network backend configuration.
+    const validBackends = ["none", "mikrotik", "radius"];
+    data.networkBackend =
+      networkBackend && validBackends.includes(String(networkBackend))
+        ? String(networkBackend)
+        : "none";
+    if (backendHost != null && String(backendHost).trim())
+      data.backendHost = String(backendHost).trim();
+    if (backendPort != null) {
+      const p = Number(backendPort);
+      if (Number.isFinite(p) && p > 0 && p < 65536) data.backendPort = Math.floor(p);
+    }
+    if (backendUser != null && String(backendUser).trim())
+      data.backendUser = String(backendUser).trim();
+    if (backendPass != null && String(backendPass).length > 0)
+      data.backendPass = String(backendPass);
+    if (backendRadiusHost != null && String(backendRadiusHost).trim())
+      data.backendRadiusHost = String(backendRadiusHost).trim();
+    if (backendRadiusSecret != null && String(backendRadiusSecret).length > 0)
+      data.backendRadiusSecret = String(backendRadiusSecret);
 
     const site = await db.hotspotSite.create({ data });
     // New site — no sessions yet.

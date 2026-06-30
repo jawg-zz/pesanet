@@ -177,6 +177,15 @@ export async function POST(
       }
     }
 
+    // Tell the network backend to extend the live session-timeout.
+    try {
+      const { getNetworkProvider } = await import("@/lib/network-provider")
+      const provider = await getNetworkProvider(session.siteId)
+      void provider.extend(session.phone, pkg.durationMinutes, session.id, session.phone)
+    } catch (e) {
+      console.error("Network backend extend failed:", e)
+    }
+
     const message = `Session extended by ${formatDuration(
       pkg.durationMinutes
     )}. New expiry: ${newEndTime.toISOString()}`;

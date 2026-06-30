@@ -178,6 +178,24 @@ export async function POST(req: Request) {
       console.error("Failed to award loyalty points on voucher redeem:", e);
     }
 
+    // Provision the connection on the real network backend.
+    try {
+      const { getNetworkProvider } = await import("@/lib/network-provider")
+      const provider = await getNetworkProvider(siteId)
+      void provider.activate({
+        username: normalisedPhone,
+        password: normalisedPhone,
+        timeoutMinutes: sessionDuration,
+        downloadMbps: pkg?.downloadSpeedMbps ?? 0,
+        uploadMbps: pkg?.uploadSpeedMbps ?? 0,
+        mac: session.macAddress ?? undefined,
+        sessionId: session.id,
+        phone: normalisedPhone,
+      })
+    } catch (e) {
+      console.error("Network backend activate (voucher) failed:", e)
+    }
+
     return NextResponse.json({
       success: true,
       sessionId: session.id,

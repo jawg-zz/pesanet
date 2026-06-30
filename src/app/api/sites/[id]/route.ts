@@ -16,6 +16,11 @@ function mapSite(
     routerIp: s.routerIp ?? null,
     maxUsers: s.maxUsers,
     status: s.status,
+    networkBackend: s.networkBackend ?? "none",
+    backendHost: s.backendHost ?? null,
+    backendPort: s.backendPort ?? 8728,
+    backendUser: s.backendUser ?? null,
+    backendRadiusHost: s.backendRadiusHost ?? null,
     createdAt: s.createdAt,
     activeSessions,
     totalSessions,
@@ -44,7 +49,20 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { name, location, routerIp, maxUsers, status } = body || {};
+    const {
+      name,
+      location,
+      routerIp,
+      maxUsers,
+      status,
+      networkBackend,
+      backendHost,
+      backendPort,
+      backendUser,
+      backendPass,
+      backendRadiusHost,
+      backendRadiusSecret,
+    } = body || {};
 
     const data: any = {};
     if (name != null && typeof name === "string" && name.trim()) {
@@ -66,6 +84,34 @@ export async function PUT(
       if (validStatuses.includes(String(status))) {
         data.status = String(status);
       }
+    }
+
+    // Network backend configuration (all optional, additive).
+    if (networkBackend != null) {
+      const validBackends = ["none", "mikrotik", "radius"];
+      if (validBackends.includes(String(networkBackend))) {
+        data.networkBackend = String(networkBackend);
+      }
+    }
+    if (backendHost != null) {
+      data.backendHost = String(backendHost).trim() || null;
+    }
+    if (backendPort != null) {
+      const p = Number(backendPort);
+      if (Number.isFinite(p) && p > 0 && p < 65536) data.backendPort = Math.floor(p);
+    }
+    if (backendUser != null) {
+      data.backendUser = String(backendUser).trim() || null;
+    }
+    if (backendPass != null) {
+      data.backendPass = String(backendPass).length > 0 ? String(backendPass) : null;
+    }
+    if (backendRadiusHost != null) {
+      data.backendRadiusHost = String(backendRadiusHost).trim() || null;
+    }
+    if (backendRadiusSecret != null) {
+      data.backendRadiusSecret =
+        String(backendRadiusSecret).length > 0 ? String(backendRadiusSecret) : null;
     }
 
     await db.hotspotSite.update({ where: { id }, data });
