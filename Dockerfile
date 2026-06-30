@@ -39,15 +39,9 @@ COPY --from=builder /app/.next/standalone /app
 COPY --from=builder /app/.next/static /app/.next/static
 COPY --from=builder /app/public /app/public
 
-# Copy Prisma CLI + client + schema for runtime db:push
-COPY --from=builder /app/node_modules/.prisma /app/node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma /app/node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma /app/node_modules/prisma
-COPY --from=builder /app/node_modules/.bin/prisma /app/node_modules/.bin/prisma
+# Copy Prisma engine files (full — includes WASM schema engine for ARM64)
+COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/prisma ./prisma
-
-# Copy seed scripts for first-run seeding
-COPY --from=builder /app/prisma/seed*.ts ./prisma/
 COPY --from=builder /app/tsconfig.json /app/
 COPY --from=builder /app/node_modules/.cache /app/node_modules/.cache
 
