@@ -18,6 +18,12 @@ export type AdminSection =
   | "sites"
   | "announcements"
   | "feedback"
+  | "loyalty"
+  | "referrals"
+  | "sms"
+  | "network"
+  | "blacklist"
+  | "subscriptions"
 
 interface AppState {
   view: AppView

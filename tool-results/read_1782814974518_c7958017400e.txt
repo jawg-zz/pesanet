@@ -1,0 +1,1085 @@
+     1→"use client"
+     2→
+     3→import { useCallback, useEffect, useState } from "react"
+     4→import { motion } from "framer-motion"
+     5→import {
+     6→  Activity,
+     7→  Clock,
+     8→  Copy,
+     9→  Edit3,
+    10→  KeyRound,
+    11→  LifeBuoy,
+    12→  Loader2,
+    13→  LogOut,
+    14→  Mail,
+    15→  MapPin,
+    16→  Phone,
+    17→  Plus,
+    18→  Receipt,
+    19→  Send,
+    20→  Smartphone,
+    21→  Sparkles,
+    22→  User,
+    23→  UserCircle,
+    24→  Wallet,
+    25→  Wifi,
+    26→} from "lucide-react"
+    27→import {
+    28→  Card,
+    29→  CardContent,
+    30→  CardDescription,
+    31→  CardHeader,
+    32→  CardTitle,
+    33→} from "@/components/ui/card"
+    34→import { Button } from "@/components/ui/button"
+    35→import { Input } from "@/components/ui/input"
+    36→import { Label } from "@/components/ui/label"
+    37→import { Skeleton } from "@/components/ui/skeleton"
+    38→import { Separator } from "@/components/ui/separator"
+    39→import { Textarea } from "@/components/ui/textarea"
+    40→import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+    41→import {
+    42→  Select,
+    43→  SelectContent,
+    44→  SelectItem,
+    45→  SelectTrigger,
+    46→  SelectValue,
+    47→} from "@/components/ui/select"
+    48→import {
+    49→  Table,
+    50→  TableBody,
+    51→  TableCell,
+    52→  TableHead,
+    53→  TableHeader,
+    54→  TableRow,
+    55→} from "@/components/ui/table"
+    56→import { StatusBadge } from "@/components/wifi/status-badge"
+    57→import {
+    58→  CategoryBadge,
+    59→  PriorityBadge,
+    60→  TicketStatusBadge,
+    61→} from "@/components/wifi/feature-badges"
+    62→import { ActiveSessionCard } from "@/components/wifi/active-session-card"
+    63→import type {
+    64→  CustomerAccount,
+    65→  SupportTicket,
+    66→  WifiSession,
+    67→} from "@/lib/types"
+    68→import {
+    69→  formatDateTime,
+    70→  formatKES,
+    71→  timeAgo,
+    72→  validateKePhone,
+    73→} from "@/lib/wifi-utils"
+    74→import { useToast } from "@/hooks/use-toast"
+    75→
+    76→export function CustomerAccount() {
+    77→  const { toast } = useToast()
+    78→  // This component only mounts on the client when the user switches to the
+    79→  // "account" view, so reading sessionStorage in the lazy initializer is safe
+    80→  // (no SSR hydration mismatch for this subtree).
+    81→  const [authedPhone, setAuthedPhone] = useState<string | null>(() => {
+    82→    if (typeof window === "undefined") return null
+    83→    try {
+    84→      return window.sessionStorage.getItem("pesanet:customerPhone")
+    85→    } catch {
+    86→      return null
+    87→    }
+    88→  })
+    89→
+    90→  function login(phone: string) {
+    91→    setAuthedPhone(phone)
+    92→    try {
+    93→      window.sessionStorage.setItem("pesanet:customerPhone", phone)
+    94→    } catch {
+    95→      /* ignore */
+    96→    }
+    97→  }
+    98→
+    99→  function logout() {
+   100→    setAuthedPhone(null)
+   101→    try {
+   102→      window.sessionStorage.removeItem("pesanet:customerPhone")
+   103→    } catch {
+   104→      /* ignore */
+   105→    }
+   106→    toast({
+   107→      title: "Signed out",
+   108→      description: "You have been logged out of your account.",
+   109→    })
+   110→  }
+   111→
+   112→  if (!authedPhone) {
+   113→    return <CustomerLogin onLogin={login} />
+   114→  }
+   115→  return <CustomerDashboard phone={authedPhone} onLogout={logout} />
+   116→}
+   117→
+   118→/* ============================================================
+   119→   LOGIN (Phone + OTP)
+   120→============================================================ */
+   121→function CustomerLogin({ onLogin }: { onLogin: (phone: string) => void }) {
+   122→  const { toast } = useToast()
+   123→  const [step, setStep] = useState<"phone" | "otp">("phone")
+   124→  const [phone, setPhone] = useState("")
+   125→  const [otp, setOtp] = useState("")
+   126→  const [shownOtp, setShownOtp] = useState<string | null>(null)
+   127→  const [sending, setSending] = useState(false)
+   128→  const [verifying, setVerifying] = useState(false)
+   129→
+   130→  async function sendOtp(e: React.FormEvent) {
+   131→    e.preventDefault()
+   132→    if (!validateKePhone(phone)) {
+   133→      toast({
+   134→        title: "Invalid phone",
+   135→        description: "Enter a valid Kenyan number (07XXXXXXXX or 01XXXXXXXX).",
+   136→        variant: "destructive",
+   137→      })
+   138→      return
+   139→    }
+   140→    setSending(true)
+   141→    try {
+   142→      const res = await fetch("/api/customer/otp", {
+   143→        method: "POST",
+   144→        headers: { "Content-Type": "application/json" },
+   145→        body: JSON.stringify({ phone: phone.trim() }),
+   146→      })
+   147→      const data = await res.json()
+   148→      if (res.status === 404) {
+   149→        toast({
+   150→          title: "Account not found",
+   151→          description:
+   152→            "No account exists for this phone. Buy a package first to create one.",
+   153→          variant: "destructive",
+   154→        })
+   155→        return
+   156→      }
+   157→      if (!res.ok) {
+   158→        throw new Error(data.error || data.message || "Could not send OTP")
+   159→      }
+   160→      setShownOtp(String(data.otp ?? ""))
+   161→      setStep("otp")
+   162→      toast({
+   163→        title: "OTP sent",
+   164→        description: data.message || "A demo OTP has been generated.",
+   165→      })
+   166→    } catch (err) {
+   167→      const msg = err instanceof Error ? err.message : "Could not send OTP"
+   168→      toast({
+   169→        title: "Failed",
+   170→        description: msg,
+   171→        variant: "destructive",
+   172→      })
+   173→    } finally {
+   174→      setSending(false)
+   175→    }
+   176→  }
+   177→
+   178→  async function verify(e: React.FormEvent) {
+   179→    e.preventDefault()
+   180→    if (!otp.trim()) {
+   181→      toast({
+   182→        title: "Enter OTP",
+   183→        description: "Please enter the 4-digit code.",
+   184→        variant: "destructive",
+   185→      })
+   186→      return
+   187→    }
+   188→    setVerifying(true)
+   189→    try {
+   190→      const res = await fetch("/api/customer/verify", {
+   191→        method: "POST",
+   192→        headers: { "Content-Type": "application/json" },
+   193→        body: JSON.stringify({ phone: phone.trim(), otp: otp.trim() }),
+   194→      })
+   195→      const data = await res.json()
+   196→      if (!res.ok || !data.success) {
+   197→        throw new Error(data.error || data.message || "Invalid OTP")
+   198→      }
+   199→      toast({
+   200→        title: "Welcome back 👋",
+   201→        description: `Signed in as ${data.name ?? phone}.`,
+   202→      })
+   203→      onLogin(phone.trim())
+   204→    } catch (err) {
+   205→      const msg = err instanceof Error ? err.message : "Invalid OTP"
+   206→      toast({
+   207→        title: "Verification failed",
+   208→        description: msg,
+   209→        variant: "destructive",
+   210→      })
+   211→    } finally {
+   212→      setVerifying(false)
+   213→    }
+   214→  }
+   215→
+   216→  return (
+   217→    <div className="mx-auto grid min-h-[70vh] w-full max-w-md place-items-center px-4 py-10">
+   218→      <motion.div
+   219→        initial={{ opacity: 0, y: 12 }}
+   220→        animate={{ opacity: 1, y: 0 }}
+   221→        className="w-full"
+   222→      >
+   223→        <Card className="overflow-hidden py-0">
+   224→          <div className="bg-gradient-to-r from-primary to-emerald-600 px-6 py-6 text-primary-foreground">
+   225→            <div className="flex items-center gap-3">
+   226→              <div className="grid size-10 place-items-center rounded-lg bg-white/15">
+   227→                <UserCircle className="size-5" />
+   228→              </div>
+   229→              <div>
+   230→                <h2 className="text-lg font-bold">My Account</h2>
+   231→                <p className="text-xs text-primary-foreground/90">
+   232→                  Sign in with your phone to manage your account
+   233→                </p>
+   234→              </div>
+   235→            </div>
+   236→          </div>
+   237→
+   238→          <CardHeader>
+   239→            <CardTitle>
+   240→              {step === "phone" ? "Sign in with phone" : "Verify OTP"}
+   241→            </CardTitle>
+   242→            <CardDescription>
+   243→              {step === "phone"
+   244→                ? "We'll send a one-time code to your phone."
+   245→                : "Enter the code we just sent you."}
+   246→            </CardDescription>
+   247→          </CardHeader>
+   248→
+   249→          <CardContent>
+   250→            {step === "phone" ? (
+   251→              <form onSubmit={sendOtp} className="flex flex-col gap-4">
+   252→                <div className="flex flex-col gap-2">
+   253→                  <Label htmlFor="ca-phone">Phone number</Label>
+   254→                  <div className="relative">
+   255→                    <Phone className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   256→                    <Input
+   257→                      id="ca-phone"
+   258→                      inputMode="tel"
+   259→                      placeholder="07XX XXX XXX"
+   260→                      value={phone}
+   261→                      onChange={(e) => setPhone(e.target.value)}
+   262→                      className="pl-9"
+   263→                    />
+   264→                  </div>
+   265→                </div>
+   266→                <Button type="submit" size="lg" disabled={sending}>
+   267→                  {sending ? (
+   268→                    <>
+   269→                      <Loader2 className="size-4 animate-spin" />
+   270→                      Sending…
+   271→                    </>
+   272→                  ) : (
+   273→                    <>
+   274→                      <Send className="size-4" />
+   275→                      Send OTP
+   276→                    </>
+   277→                  )}
+   278→                </Button>
+   279→                <p className="text-center text-xs text-muted-foreground">
+   280→                  Demo phones: <span className="font-mono">0712345678</span>,{" "}
+   281→                  <span className="font-mono">0712345107</span>
+   282→                </p>
+   283→              </form>
+   284→            ) : (
+   285→              <form onSubmit={verify} className="flex flex-col gap-4">
+   286→                {shownOtp && (
+   287→                  <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+   288→                    <Sparkles className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+   289→                    <div>
+   290→                      <p className="font-medium text-amber-800 dark:text-amber-200">
+   291→                        Demo OTP:{" "}
+   292→                        <span className="font-mono text-base tracking-widest">
+   293→                          {shownOtp}
+   294→                        </span>
+   295→                      </p>
+   296→                      <p className="text-xs text-amber-700/80 dark:text-amber-300/80">
+   297→                        In production this code is sent via SMS.
+   298→                      </p>
+   299→                    </div>
+   300→                  </div>
+   301→                )}
+   302→                <div className="flex flex-col gap-2">
+   303→                  <Label htmlFor="ca-otp">OTP code</Label>
+   304→                  <div className="relative">
+   305→                    <KeyRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   306→                    <Input
+   307→                      id="ca-otp"
+   308→                      inputMode="numeric"
+   309→                      placeholder="1234"
+   310→                      value={otp}
+   311→                      onChange={(e) =>
+   312→                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+   313→                      }
+   314→                      className="pl-9 font-mono tracking-widest"
+   315→                    />
+   316→                  </div>
+   317→                </div>
+   318→                <Button type="submit" size="lg" disabled={verifying}>
+   319→                  {verifying ? (
+   320→                    <>
+   321→                      <Loader2 className="size-4 animate-spin" />
+   322→                      Verifying…
+   323→                    </>
+   324→                  ) : (
+   325→                    <>
+   326→                      <KeyRound className="size-4" />
+   327→                      Verify & sign in
+   328→                    </>
+   329→                  )}
+   330→                </Button>
+   331→                <Button
+   332→                  type="button"
+   333→                  variant="ghost"
+   334→                  size="sm"
+   335→                  onClick={() => {
+   336→                    setStep("phone")
+   337→                    setOtp("")
+   338→                    setShownOtp(null)
+   339→                  }}
+   340→                >
+   341→                  ← Use a different phone
+   342→                </Button>
+   343→              </form>
+   344→            )}
+   345→          </CardContent>
+   346→        </Card>
+   347→      </motion.div>
+   348→    </div>
+   349→  )
+   350→}
+   351→
+   352→/* ============================================================
+   353→   DASHBOARD
+   354→============================================================ */
+   355→function CustomerDashboard({
+   356→  phone,
+   357→  onLogout,
+   358→}: {
+   359→  phone: string
+   360→  onLogout: () => void
+   361→}) {
+   362→  const { toast } = useToast()
+   363→  const [account, setAccount] = useState<CustomerAccount | null>(null)
+   364→  const [loading, setLoading] = useState(true)
+   365→
+   366→  const load = useCallback(async () => {
+   367→    setLoading(true)
+   368→    try {
+   369→      const res = await fetch(
+   370→        `/api/customer/account?phone=${encodeURIComponent(phone)}`
+   371→      )
+   372→      if (!res.ok) throw new Error("Failed to load account")
+   373→      const data = (await res.json()) as CustomerAccount
+   374→      setAccount(data)
+   375→    } catch {
+   376→      toast({
+   377→        title: "Error",
+   378→        description: "Could not load your account.",
+   379→        variant: "destructive",
+   380→      })
+   381→    } finally {
+   382→      setLoading(false)
+   383→    }
+   384→  }, [phone, toast])
+   385→
+   386→  useEffect(() => {
+   387→    load()
+   388→  }, [load])
+   389→
+   390→  if (loading || !account) {
+   391→    return (
+   392→      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+   393→        <Skeleton className="h-28 rounded-xl" />
+   394→        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   395→          {Array.from({ length: 4 }).map((_, i) => (
+   396→            <Skeleton key={i} className="h-28 rounded-xl" />
+   397→          ))}
+   398→        </div>
+   399→        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+   400→          <Skeleton className="h-72 rounded-xl" />
+   401→          <Skeleton className="h-72 rounded-xl" />
+   402→        </div>
+   403→      </div>
+   404→    )
+   405→  }
+   406→
+   407→  const initials = (account.name ?? account.phone)
+   408→    .replace(/[^a-zA-Z0-9 ]/g, "")
+   409→    .slice(-2)
+   410→    .toUpperCase()
+   411→
+   412→  return (
+   413→    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+   414→      {/* Header card */}
+   415→      <motion.div
+   416→        initial={{ opacity: 0, y: 10 }}
+   417→        animate={{ opacity: 1, y: 0 }}
+   418→      >
+   419→        <Card className="overflow-hidden py-0">
+   420→          <div className="bg-gradient-to-r from-primary to-emerald-600 px-5 py-5 text-primary-foreground sm:px-6">
+   421→            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   422→              <div className="flex items-center gap-4">
+   423→                <Avatar className="size-14 border-2 border-white/30">
+   424→                  <AvatarFallback className="bg-white/15 text-base font-bold text-white">
+   425→                    {initials}
+   426→                  </AvatarFallback>
+   427→                </Avatar>
+   428→                <div>
+   429→                  <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+   430→                    {account.name ?? "My Account"}
+   431→                  </h1>
+   432→                  <p className="flex items-center gap-1.5 font-mono text-sm text-primary-foreground/90">
+   433→                    <Smartphone className="size-3.5" />
+   434→                    {account.phone}
+   435→                  </p>
+   436→                  <p className="mt-0.5 text-xs text-primary-foreground/80">
+   437→                    Joined {timeAgo(account.createdAt)}
+   438→                  </p>
+   439→                </div>
+   440→              </div>
+   441→              <Button
+   442→                variant="secondary"
+   443→                onClick={onLogout}
+   444→                className="bg-white/15 text-white hover:bg-white/25 hover:text-white"
+   445→              >
+   446→                <LogOut className="size-4" />
+   447→                Logout
+   448→              </Button>
+   449→            </div>
+   450→          </div>
+   451→        </Card>
+   452→      </motion.div>
+   453→
+   454→      {/* Stats */}
+   455→      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   456→        <StatCard
+   457→          icon={<Wallet className="size-5" />}
+   458→          label="Total Spent"
+   459→          value={formatKES(account.totalSpent)}
+   460→          tone="emerald"
+   461→          delay={0}
+   462→        />
+   463→        <StatCard
+   464→          icon={<Activity className="size-5" />}
+   465→          label="Sessions"
+   466→          value={String(account.sessionCount)}
+   467→          tone="primary"
+   468→          delay={0.05}
+   469→        />
+   470→        <StatCard
+   471→          icon={<Wifi className="size-5" />}
+   472→          label="Active Sessions"
+   473→          value={String(account.activeSessions?.length ?? 0)}
+   474→          tone="amber"
+   475→          delay={0.1}
+   476→        />
+   477→        <StatCard
+   478→          icon={<LifeBuoy className="size-5" />}
+   479→          label="Support Tickets"
+   480→          value={String(account.tickets?.length ?? 0)}
+   481→          tone="primary"
+   482→          delay={0.15}
+   483→        />
+   484→      </div>
+   485→
+   486→      {/* Active sessions */}
+   487→      {account.activeSessions && account.activeSessions.length > 0 && (
+   488→        <section className="mt-6 flex flex-col gap-3">
+   489→          <h2 className="text-lg font-bold tracking-tight">Active sessions</h2>
+   490→          <div className="grid gap-4">
+   491→            {account.activeSessions.map((s) => (
+   492→              <ActiveSessionCard
+   493→                key={s.id}
+   494→                session={s}
+   495→                onDisconnected={load}
+   496→                onExpired={load}
+   497→                onExtended={load}
+   498→              />
+   499→            ))}
+   500→          </div>
+   501→        </section>
+   502→      )}
+   503→
+   504→      {/* Profile + recent sessions */}
+   505→      <div className="mt-6 grid gap-5 lg:grid-cols-3">
+   506→        <ProfileCard account={account} onUpdated={load} />
+   507→
+   508→        <Card className="lg:col-span-2 py-0">
+   509→          <CardHeader className="px-5 pt-5">
+   510→            <CardTitle className="flex items-center gap-2 text-base">
+   511→              <Clock className="size-4 text-primary" />
+   512→              Recent sessions
+   513→            </CardTitle>
+   514→            <CardDescription>
+   515→              Your last {account.recentSessions?.length ?? 0} sessions.
+   516→            </CardDescription>
+   517→          </CardHeader>
+   518→          <CardContent className="px-2 pb-3 sm:px-4">
+   519→            <div className="max-h-[60vh] overflow-y-auto custom-scroll rounded-lg border">
+   520→              <Table>
+   521→                <TableHeader className="sticky top-0 z-10 bg-card">
+   522→                  <TableRow>
+   523→                    <TableHead>Package</TableHead>
+   524→                    <TableHead className="hidden sm:table-cell">Started</TableHead>
+   525→                    <TableHead>Price</TableHead>
+   526→                    <TableHead>Status</TableHead>
+   527→                  </TableRow>
+   528→                </TableHeader>
+   529→                <TableBody>
+   530→                  {account.recentSessions && account.recentSessions.length > 0 ? (
+   531→                    account.recentSessions.map((s: WifiSession) => (
+   532→                      <TableRow key={s.id} className="hover:bg-muted/50">
+   533→                        <TableCell>
+   534→                          <div className="flex flex-col">
+   535→                            <span className="font-medium">{s.packageName}</span>
+   536→                            <span className="text-xs text-muted-foreground">
+   537→                              {formatDateTime(s.startTime)}
+   538→                            </span>
+   539→                          </div>
+   540→                        </TableCell>
+   541→                        <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
+   542→                          {timeAgo(s.startTime)}
+   543→                        </TableCell>
+   544→                        <TableCell className="text-sm font-medium">
+   545→                          {formatKES(s.priceKES)}
+   546→                        </TableCell>
+   547→                        <TableCell>
+   548→                          <StatusBadge status={s.status} />
+   549→                        </TableCell>
+   550→                      </TableRow>
+   551→                    ))
+   552→                  ) : (
+   553→                    <TableRow>
+   554→                      <TableCell colSpan={4} className="py-10 text-center">
+   555→                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+   556→                          <Clock className="size-5" />
+   557→                          <p className="text-sm">No sessions yet.</p>
+   558→                        </div>
+   559→                      </TableCell>
+   560→                    </TableRow>
+   561→                  )}
+   562→                </TableBody>
+   563→              </Table>
+   564→            </div>
+   565→          </CardContent>
+   566→        </Card>
+   567→      </div>
+   568→
+   569→      {/* Transactions + tickets */}
+   570→      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+   571→        {/* Recent transactions */}
+   572→        <Card className="py-0">
+   573→          <CardHeader className="px-5 pt-5">
+   574→            <CardTitle className="flex items-center gap-2 text-base">
+   575→              <Receipt className="size-4 text-primary" />
+   576→              Recent transactions
+   577→            </CardTitle>
+   578→          </CardHeader>
+   579→          <CardContent className="px-2 pb-3 sm:px-4">
+   580→            {account.recentTransactions && account.recentTransactions.length > 0 ? (
+   581→              <ul className="max-h-[40vh] overflow-y-auto custom-scroll">
+   582→                {account.recentTransactions.map((t) => (
+   583→                  <li
+   584→                    key={t.id}
+   585→                    className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-muted/40 border-b last:border-0"
+   586→                  >
+   587→                    <div className="flex min-w-0 flex-col">
+   588→                      <span className="truncate font-medium">
+   589→                        {t.packageName ?? "Voucher"}
+   590→                      </span>
+   591→                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   592→                        {t.method === "mpesa" ? (
+   593→                          <Smartphone className="size-3" />
+   594→                        ) : (
+   595→                          <Receipt className="size-3" />
+   596→                        )}
+   597→                        {t.mpesaRef ?? t.method}
+   598→                        <span aria-hidden>·</span>
+   599→                        {timeAgo(t.createdAt)}
+   600→                      </span>
+   601→                    </div>
+   602→                    <div className="flex items-center gap-2">
+   603→                      <span className="text-xs font-medium text-primary">
+   604→                        {formatKES(t.amountKES)}
+   605→                      </span>
+   606→                      <StatusBadge status={t.status} />
+   607→                    </div>
+   608→                  </li>
+   609→                ))}
+   610→              </ul>
+   611→            ) : (
+   612→              <div className="flex flex-col items-center gap-2 px-4 py-10 text-muted-foreground">
+   613→                <Receipt className="size-5" />
+   614→                <p className="text-sm">No transactions yet.</p>
+   615→              </div>
+   616→            )}
+   617→          </CardContent>
+   618→        </Card>
+   619→
+   620→        {/* Tickets */}
+   621→        <TicketsCard
+   622→          phone={phone}
+   623→          tickets={account.tickets ?? []}
+   624→          onUpdated={load}
+   625→        />
+   626→      </div>
+   627→    </div>
+   628→  )
+   629→}
+   630→
+   631→/* ============================================================
+   632→   PROFILE CARD
+   633→============================================================ */
+   634→function ProfileCard({
+   635→  account,
+   636→  onUpdated,
+   637→}: {
+   638→  account: CustomerAccount
+   639→  onUpdated: () => void
+   640→}) {
+   641→  const { toast } = useToast()
+   642→  const [editing, setEditing] = useState(false)
+   643→  const [name, setName] = useState(account.name ?? "")
+   644→  const [email, setEmail] = useState(account.email ?? "")
+   645→  const [location, setLocation] = useState(account.location ?? "")
+   646→  const [saving, setSaving] = useState(false)
+   647→
+   648→  // Sync when account reloads
+   649→  useEffect(() => {
+   650→    setName(account.name ?? "")
+   651→    setEmail(account.email ?? "")
+   652→    setLocation(account.location ?? "")
+   653→  }, [account.name, account.email, account.location])
+   654→
+   655→  async function save() {
+   656→    setSaving(true)
+   657→    try {
+   658→      const res = await fetch("/api/customer/profile", {
+   659→        method: "PUT",
+   660→        headers: { "Content-Type": "application/json" },
+   661→        body: JSON.stringify({
+   662→          phone: account.phone,
+   663→          name: name.trim() || undefined,
+   664→          email: email.trim() || undefined,
+   665→          location: location.trim() || undefined,
+   666→        }),
+   667→      })
+   668→      if (!res.ok) throw new Error("Failed to update profile")
+   669→      toast({
+   670→        title: "Profile updated",
+   671→        description: "Your details have been saved.",
+   672→      })
+   673→      setEditing(false)
+   674→      onUpdated()
+   675→    } catch {
+   676→      toast({
+   677→        title: "Error",
+   678→        description: "Could not update profile.",
+   679→        variant: "destructive",
+   680→      })
+   681→    } finally {
+   682→      setSaving(false)
+   683→    }
+   684→  }
+   685→
+   686→  return (
+   687→    <Card className="py-0">
+   688→      <CardHeader className="flex-row items-center justify-between px-5 pt-5">
+   689→        <div>
+   690→          <CardTitle className="flex items-center gap-2 text-base">
+   691→            <User className="size-4 text-primary" />
+   692→            Profile
+   693→          </CardTitle>
+   694→          <CardDescription>Your personal details</CardDescription>
+   695→        </div>
+   696→        {!editing && (
+   697→          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+   698→            <Edit3 className="size-3.5" />
+   699→            Edit
+   700→          </Button>
+   701→        )}
+   702→      </CardHeader>
+   703→      <CardContent className="flex flex-col gap-4 px-5 pb-5">
+   704→        {editing ? (
+   705→          <>
+   706→            <div className="flex flex-col gap-2">
+   707→              <Label htmlFor="pf-name">Full name</Label>
+   708→              <div className="relative">
+   709→                <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   710→                <Input
+   711→                  id="pf-name"
+   712→                  value={name}
+   713→                  onChange={(e) => setName(e.target.value)}
+   714→                  className="pl-9"
+   715→                  placeholder="Your name"
+   716→                />
+   717→              </div>
+   718→            </div>
+   719→            <div className="flex flex-col gap-2">
+   720→              <Label htmlFor="pf-email">Email</Label>
+   721→              <div className="relative">
+   722→                <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   723→                <Input
+   724→                  id="pf-email"
+   725→                  type="email"
+   726→                  value={email}
+   727→                  onChange={(e) => setEmail(e.target.value)}
+   728→                  className="pl-9"
+   729→                  placeholder="you@example.com"
+   730→                />
+   731→              </div>
+   732→            </div>
+   733→            <div className="flex flex-col gap-2">
+   734→              <Label htmlFor="pf-loc">Location</Label>
+   735→              <div className="relative">
+   736→                <MapPin className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   737→                <Input
+   738→                  id="pf-loc"
+   739→                  value={location}
+   740→                  onChange={(e) => setLocation(e.target.value)}
+   741→                  className="pl-9"
+   742→                  placeholder="e.g. Nairobi"
+   743→                />
+   744→              </div>
+   745→            </div>
+   746→            <div className="flex gap-2">
+   747→              <Button
+   748→                variant="outline"
+   749→                className="flex-1"
+   750→                onClick={() => setEditing(false)}
+   751→                disabled={saving}
+   752→              >
+   753→                Cancel
+   754→              </Button>
+   755→              <Button className="flex-1" onClick={save} disabled={saving}>
+   756→                {saving ? (
+   757→                  <>
+   758→                    <Loader2 className="size-4 animate-spin" />
+   759→                    Saving…
+   760→                  </>
+   761→                ) : (
+   762→                  "Save changes"
+   763→                )}
+   764→              </Button>
+   765→            </div>
+   766→          </>
+   767→        ) : (
+   768→          <div className="flex flex-col gap-3 text-sm">
+   769→            <ProfileRow
+   770→              icon={<User className="size-4" />}
+   771→              label="Name"
+   772→              value={account.name ?? "Not set"}
+   773→            />
+   774→            <ProfileRow
+   775→              icon={<Phone className="size-4" />}
+   776→              label="Phone"
+   777→              value={account.phone}
+   778→              mono
+   779→            />
+   780→            <ProfileRow
+   781→              icon={<Mail className="size-4" />}
+   782→              label="Email"
+   783→              value={account.email ?? "Not set"}
+   784→            />
+   785→            <ProfileRow
+   786→              icon={<MapPin className="size-4" />}
+   787→              label="Location"
+   788→              value={account.location ?? "Not set"}
+   789→            />
+   790→          </div>
+   791→        )}
+   792→      </CardContent>
+   793→    </Card>
+   794→  )
+   795→}
+   796→
+   797→function ProfileRow({
+   798→  icon,
+   799→  label,
+   800→  value,
+   801→  mono,
+   802→}: {
+   803→  icon: React.ReactNode
+   804→  label: string
+   805→  value: string
+   806→  mono?: boolean
+   807→}) {
+   808→  return (
+   809→    <div className="flex items-center justify-between gap-3">
+   810→      <span className="flex items-center gap-2 text-muted-foreground">
+   811→        {icon}
+   812→        {label}
+   813→      </span>
+   814→      <span className={`font-medium ${mono ? "font-mono text-xs" : ""}`}>
+   815→        {value}
+   816→      </span>
+   817→    </div>
+   818→  )
+   819→}
+   820→
+   821→/* ============================================================
+   822→   TICKETS CARD
+   823→============================================================ */
+   824→const TICKET_CATEGORIES = [
+   825→  { value: "billing", label: "Billing / Payment" },
+   826→  { value: "connectivity", label: "Connectivity / Speed" },
+   827→  { value: "voucher", label: "Voucher issue" },
+   828→  { value: "account", label: "Account access" },
+   829→  { value: "other", label: "Other" },
+   830→]
+   831→const TICKET_PRIORITIES = [
+   832→  { value: "low", label: "Low" },
+   833→  { value: "normal", label: "Normal" },
+   834→  { value: "high", label: "High" },
+   835→  { value: "urgent", label: "Urgent" },
+   836→]
+   837→
+   838→function TicketsCard({
+   839→  phone,
+   840→  tickets,
+   841→  onUpdated,
+   842→}: {
+   843→  phone: string
+   844→  tickets: SupportTicket[]
+   845→  onUpdated: () => void
+   846→}) {
+   847→  const { toast } = useToast()
+   848→  const [open, setOpen] = useState(false)
+   849→  const [subject, setSubject] = useState("")
+   850→  const [message, setMessage] = useState("")
+   851→  const [category, setCategory] = useState("billing")
+   852→  const [priority, setPriority] = useState("normal")
+   853→  const [submitting, setSubmitting] = useState(false)
+   854→
+   855→  async function submit(e: React.FormEvent) {
+   856→    e.preventDefault()
+   857→    if (!subject.trim() || !message.trim()) {
+   858→      toast({
+   859→        title: "Missing details",
+   860→        description: "Please add a subject and message.",
+   861→        variant: "destructive",
+   862→      })
+   863→      return
+   864→    }
+   865→    setSubmitting(true)
+   866→    try {
+   867→      const res = await fetch("/api/tickets", {
+   868→        method: "POST",
+   869→        headers: { "Content-Type": "application/json" },
+   870→        body: JSON.stringify({
+   871→          phone,
+   872→          subject: subject.trim(),
+   873→          message: message.trim(),
+   874→          category,
+   875→          priority,
+   876→        }),
+   877→      })
+   878→      if (!res.ok) throw new Error("Could not submit ticket")
+   879→      toast({
+   880→        title: "Ticket created",
+   881→        description: "We'll respond soon.",
+   882→      })
+   883→      setSubject("")
+   884→      setMessage("")
+   885→      setOpen(false)
+   886→      onUpdated()
+   887→    } catch {
+   888→      toast({
+   889→        title: "Error",
+   890→        description: "Could not submit ticket.",
+   891→        variant: "destructive",
+   892→      })
+   893→    } finally {
+   894→      setSubmitting(false)
+   895→    }
+   896→  }
+   897→
+   898→  return (
+   899→    <Card className="py-0">
+   900→      <CardHeader className="flex-row items-center justify-between px-5 pt-5">
+   901→        <div>
+   902→          <CardTitle className="flex items-center gap-2 text-base">
+   903→            <LifeBuoy className="size-4 text-primary" />
+   904→            My support tickets
+   905→          </CardTitle>
+   906→          <CardDescription>{tickets.length} total</CardDescription>
+   907→        </div>
+   908→        <Button size="sm" onClick={() => setOpen((o) => !o)}>
+   909→          <Plus className="size-3.5" />
+   910→          New ticket
+   911→        </Button>
+   912→      </CardHeader>
+   913→      <CardContent className="flex flex-col gap-4 px-5 pb-5">
+   914→        {open && (
+   915→          <form
+   916→            onSubmit={submit}
+   917→            className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4"
+   918→          >
+   919→            <div className="flex flex-col gap-2">
+   920→              <Label htmlFor="new-ticket-subject">Subject</Label>
+   921→              <Input
+   922→                id="new-ticket-subject"
+   923→                value={subject}
+   924→                onChange={(e) => setSubject(e.target.value)}
+   925→                placeholder="Briefly describe the issue"
+   926→              />
+   927→            </div>
+   928→            <div className="grid grid-cols-2 gap-2">
+   929→              <div className="flex flex-col gap-2">
+   930→                <Label htmlFor="new-ticket-cat">Category</Label>
+   931→                <Select value={category} onValueChange={setCategory}>
+   932→                  <SelectTrigger id="new-ticket-cat" className="w-full">
+   933→                    <SelectValue />
+   934→                  </SelectTrigger>
+   935→                  <SelectContent>
+   936→                    {TICKET_CATEGORIES.map((c) => (
+   937→                      <SelectItem key={c.value} value={c.value}>
+   938→                        {c.label}
+   939→                      </SelectItem>
+   940→                    ))}
+   941→                  </SelectContent>
+   942→                </Select>
+   943→              </div>
+   944→              <div className="flex flex-col gap-2">
+   945→                <Label htmlFor="new-ticket-pri">Priority</Label>
+   946→                <Select value={priority} onValueChange={setPriority}>
+   947→                  <SelectTrigger id="new-ticket-pri" className="w-full">
+   948→                    <SelectValue />
+   949→                  </SelectTrigger>
+   950→                  <SelectContent>
+   951→                    {TICKET_PRIORITIES.map((p) => (
+   952→                      <SelectItem key={p.value} value={p.value}>
+   953→                        {p.label}
+   954→                      </SelectItem>
+   955→                    ))}
+   956→                  </SelectContent>
+   957→                </Select>
+   958→              </div>
+   959→            </div>
+   960→            <div className="flex flex-col gap-2">
+   961→              <Label htmlFor="new-ticket-msg">Message</Label>
+   962→              <Textarea
+   963→                id="new-ticket-msg"
+   964→                value={message}
+   965→                onChange={(e) => setMessage(e.target.value)}
+   966→                placeholder="Describe your issue…"
+   967→                rows={3}
+   968→              />
+   969→            </div>
+   970→            <div className="flex justify-end gap-2">
+   971→              <Button
+   972→                type="button"
+   973→                variant="ghost"
+   974→                size="sm"
+   975→                onClick={() => setOpen(false)}
+   976→              >
+   977→                Cancel
+   978→              </Button>
+   979→              <Button type="submit" size="sm" disabled={submitting}>
+   980→                {submitting ? "Submitting…" : "Submit"}
+   981→              </Button>
+   982→            </div>
+   983→          </form>
+   984→        )}
+   985→
+   986→        {tickets.length === 0 ? (
+   987→          <div className="flex flex-col items-center gap-2 px-4 py-8 text-muted-foreground">
+   988→            <LifeBuoy className="size-5" />
+   989→            <p className="text-sm">No tickets yet.</p>
+   990→          </div>
+   991→        ) : (
+   992→          <ul className="max-h-[40vh] overflow-y-auto custom-scroll flex flex-col">
+   993→            {tickets.map((t: SupportTicket) => (
+   994→              <li
+   995→                key={t.id}
+   996→                className="border-b px-1 py-3 last:border-0"
+   997→              >
+   998→                <div className="flex items-start justify-between gap-2">
+   999→                  <div className="min-w-0 flex-1">
+  1000→                    <p className="truncate font-medium">{t.subject}</p>
+  1001→                    <p className="line-clamp-2 text-xs text-muted-foreground">
+  1002→                      {t.message}
+  1003→                    </p>
+  1004→                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+  1005→                      <CategoryBadge category={t.category} />
+  1006→                      <PriorityBadge priority={t.priority} />
+  1007→                      <TicketStatusBadge status={t.status} />
+  1008→                      <span className="text-xs text-muted-foreground">
+  1009→                        {timeAgo(t.createdAt)}
+  1010→                      </span>
+  1011→                    </div>
+  1012→                    {t.adminReply && (
+  1013→                      <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
+  1014→                        <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+  1015→                          Support reply:
+  1016→                        </p>
+  1017→                        <p className="text-muted-foreground">{t.adminReply}</p>
+  1018→                      </div>
+  1019→                    )}
+  1020→                  </div>
+  1021→                  <button
+  1022→                    type="button"
+  1023→                    onClick={() => {
+  1024→                      navigator.clipboard?.writeText(t.id)
+  1025→                      toast({ title: "Ticket ID copied" })
+  1026→                    }}
+  1027→                    className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
+  1028→                    title="Copy ticket ID"
+  1029→                  >
+  1030→                    #{t.id.slice(-6)}
+  1031→                    <Copy className="ml-1 inline size-3" />
+  1032→                  </button>
+  1033→                </div>
+  1034→              </li>
+  1035→            ))}
+  1036→          </ul>
+  1037→        )}
+  1038→      </CardContent>
+  1039→    </Card>
+  1040→  )
+  1041→}
+  1042→
+  1043→/* ============================================================
+  1044→   SHARED STAT CARD
+  1045→============================================================ */
+  1046→function StatCard({
+  1047→  icon,
+  1048→  label,
+  1049→  value,
+  1050→  tone,
+  1051→  delay = 0,
+  1052→}: {
+  1053→  icon: React.ReactNode
+  1054→  label: string
+  1055→  value: string
+  1056→  tone: "primary" | "emerald" | "amber"
+  1057→  delay?: number
+  1058→}) {
+  1059→  const toneClass =
+  1060→    tone === "primary"
+  1061→      ? "bg-primary/10 text-primary"
+  1062→      : tone === "emerald"
+  1063→      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+  1064→      : "bg-amber-500/15 text-amber-600 dark:text-amber-300"
+  1065→  return (
+  1066→    <motion.div
+  1067→      initial={{ opacity: 0, y: 10 }}
+  1068→      animate={{ opacity: 1, y: 0 }}
+  1069→      transition={{ delay }}
+  1070→    >
+  1071→      <Card className="py-0">
+  1072→        <CardContent className="flex items-center gap-4 p-5">
+  1073→          <div className={`grid size-12 place-items-center rounded-xl ${toneClass}`}>
+  1074→            {icon}
+  1075→          </div>
+  1076→          <div className="min-w-0">
+  1077→            <p className="text-xs text-muted-foreground">{label}</p>
+  1078→            <p className="truncate text-xl font-bold tracking-tight">{value}</p>
+  1079→          </div>
+  1080→        </CardContent>
+  1081→      </Card>
+  1082→    </motion.div>
+  1083→  )
+  1084→}
+  1085→

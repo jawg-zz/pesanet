@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   AlertTriangle,
+  Award,
   CreditCard,
+  Gift,
   HelpCircle,
   Info,
   LifeBuoy,
@@ -14,6 +16,7 @@ import {
   Sparkles,
   Tag,
   Ticket,
+  UserCircle,
   Wifi,
   Wrench,
   X,
@@ -47,9 +50,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { useAppStore } from "@/lib/store"
 import { validateKePhone } from "@/lib/wifi-utils"
 
 export function CustomerPortal() {
+  const setView = useAppStore((s) => s.setView)
   const [packages, setPackages] = useState<WifiPackage[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<WifiPackage | null>(null)
@@ -212,6 +217,84 @@ export function CustomerPortal() {
         </div>
       </section>
 
+      {/* Loyalty & Rewards promo */}
+      <section className="mt-10">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-primary to-emerald-700 px-6 py-8 text-primary-foreground shadow-lg sm:px-8 sm:py-10"
+        >
+          <div className="absolute -right-12 -top-12 size-56 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute -bottom-16 -right-8 size-64 rounded-full bg-emerald-900/30 blur-2xl" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-xl">
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur"
+              >
+                <Sparkles className="size-3.5" />
+                PesaNet Rewards
+              </motion.div>
+              <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">
+                Earn loyalty points. Get free WiFi.
+              </h2>
+              <p className="mt-2 max-w-lg text-sm text-primary-foreground/90">
+                Every shilling you spend earns points you can redeem for free
+                packages. Refer friends to climb tiers and unlock bigger
+                rewards.
+              </p>
+              <ul className="mt-4 flex flex-col gap-2 text-sm">
+                <li className="flex items-center gap-2">
+                  <Award className="size-4 shrink-0" />
+                  <span>
+                    <strong>Earn 1 point</strong> per KES spent on packages.
+                  </span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <UserCircle className="size-4 shrink-0" />
+                  <span>
+                    <strong>100 bonus points</strong> for every friend you
+                    refer who buys a package.
+                  </span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Gift className="size-4 shrink-0" />
+                  <span>
+                    <strong>Redeem points</strong> for free package vouchers —
+                    starting at 50 points.
+                  </span>
+                </li>
+              </ul>
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setView("account")}
+                  className="bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                >
+                  <UserCircle className="size-4" />
+                  View in My Account
+                </Button>
+              </div>
+            </div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="grid w-full max-w-xs grid-cols-2 gap-3"
+            >
+              <TierMiniCard tier="Bronze" min="0 pts" tone="bronze" />
+              <TierMiniCard tier="Silver" min="500 pts" tone="silver" />
+              <TierMiniCard tier="Gold" min="2,000 pts" tone="gold" />
+              <TierMiniCard tier="Platinum" min="5,000 pts" tone="platinum" />
+            </motion.div>
+          </div>
+        </motion.div>
+      </section>
+
       {/* Packages grid */}
       <section className="mt-10">
         <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -327,6 +410,38 @@ function ActiveSessionInline({
   onExtended?: (s: WifiSession) => void
 }) {
   return <ActiveSessionCard session={session} onExtended={onExtended} />
+}
+
+function TierMiniCard({
+  tier,
+  min,
+  tone,
+}: {
+  tier: string
+  min: string
+  tone: "bronze" | "silver" | "gold" | "platinum"
+}) {
+  const toneClass =
+    tone === "platinum"
+      ? "bg-gradient-to-br from-white/30 to-white/10 border-white/40"
+      : tone === "gold"
+      ? "bg-amber-300/25 border-amber-200/40"
+      : tone === "silver"
+      ? "bg-slate-200/25 border-slate-200/40"
+      : "bg-white/15 border-white/25"
+  return (
+    <div
+      className={`rounded-xl border ${toneClass} px-3 py-2.5 text-primary-foreground backdrop-blur`}
+    >
+      <p className="text-[10px] uppercase tracking-wider text-primary-foreground/80">
+        Tier
+      </p>
+      <p className="text-sm font-bold capitalize">{tier}</p>
+      <p className="mt-0.5 font-mono text-[10px] text-primary-foreground/80">
+        {min}
+      </p>
+    </div>
+  )
 }
 
 function announcementTone(type: string) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { validateKePhone, normaliseKePhone } from "@/lib/wifi-utils";
+import { isBlacklisted } from "@/lib/loyalty";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,14 @@ export async function POST(req: Request) {
     }
 
     const normalisedPhone = normaliseKePhone(String(phone));
+
+    // Block blacklisted phones from purchasing.
+    if (await isBlacklisted(normalisedPhone)) {
+      return NextResponse.json(
+        { error: "This number is blocked. Contact support." },
+        { status: 403 }
+      );
+    }
 
     // Validate promo code if provided
     let promo: PromoValidation | null = null;

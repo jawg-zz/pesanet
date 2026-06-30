@@ -402,3 +402,90 @@ Stage Summary:
   6. Printable Receipts (M-Pesa receipt dialog with print-to-PDF via new window)
 - Sessions are now tagged to hotspot sites; new purchases/redeems auto-assign to an active site.
 - Admin sidebar Extensions group now has: Resellers, Promo Codes, Support Tickets, Reports, Hotspot Sites, Announcements, Feedback, Settings.
+
+---
+Task ID: 10
+Agent: main (orchestrator)
+Task: Round 4 foundation — schema v4 (loyalty, referrals, SMS, routers, blacklist, subscriptions) + seed + types + store + helpers
+
+Work Log:
+- Extended Prisma schema with 6 new models: Referral, PointsTransaction, SmsBroadcast, RouterStatus, Blacklist, Subscription. Added loyalty fields to Customer (pointsBalance, lifetimePoints, tier, referralCode) + relations.
+- Fixed relation validation: Referral uses named relations "Referrer"/"Referred"; HotspotSite has back-relation routerStatus.
+- Ran `bun run db:push` — schema in sync.
+- Wrote `prisma/seed-v4.ts` and ran it: 16 customers got loyalty points (1 pt/KES spent) + tiers (bronze→platinum) + unique referral codes; 5 router statuses (online/warning/offline by site load); 3 completed referrals (referrer +100 pts each); points ledger backfilled; 2 blacklist entries; 2 active subscriptions (Daily Pro + Weekly Unlimited auto-renew).
+- Updated `src/lib/types.ts`: added LoyaltySummary, PointsLedgerEntry, ReferralEntry, RedeemOption, SmsBroadcast, RouterHealth, BlacklistEntry, SubscriptionEntry; extended AdminStats with activeSubscriptions + pointsCirculation.
+- Updated `src/lib/store.ts`: AdminSection extended with loyalty/referrals/sms/network/blacklist/subscriptions.
+- Added loyalty helpers to `src/lib/wifi-utils.ts`: TIER_THRESHOLDS, tierForPoints, nextTier, pointsToNextTier, pointsCostForPackage (10x price), tierLabel, formatUptime.
+
+Stage Summary:
+- DB schema v4 + seed ready.
+- Tier thresholds: bronze 0, silver 500, gold 2000, platinum 5000 (lifetime points).
+- Points: earn 1 pt/KES on purchases + 100 pts per completed referral; redeem at 10x price for a free package voucher.
+- Types + store + helpers are the contract for backend (11-a) + frontend (11-b) agents.
+- Existing purchase flows (mpesa/status, vouchers/redeem) must be modified to award points + process referral completion + check blacklist.
+
+---
+Task ID: 11-a
+Agent: full-stack-developer (backend)
+Task: Round 5 backend — Loyalty redeem, Referrals, Bulk SMS, Network Health, Blacklist, Auto-renew Subscriptions APIs + 1 bug fix in loyalty/[customerId].
+
+Work Log:
+- Read worklog (Tasks 1, 2-a, 5-a, 5-b, 6, 7, 8-a, 9, 10) + prisma/schema.prisma + src/lib/types.ts + src/lib/wifi-utils.ts + src/lib/loyalty.ts + the 4 routes that Step 2 says to modify.
+- Confirmed Step 1 (loyalty.ts helpers) and Step 2 (mpesa/stk, mpesa/status, vouchers/redeem, admin/stats modifications) were already in place from the Task 10 round-4 foundation. Re-read all of them to verify the contract — no changes needed.
+- Fixed a real bug in src/app/api/loyalty/[customerId]/route.ts: `referralsCompleted` was reusing `_count.referralsMade` (same as referralsCount) instead of filtering by status="completed". Now does two separate counts (referrerCustomerId = id, plus status="completed") in parallel and passes them to buildSummary().
+- Created 14 new route files:
+  * /api/loyalty/redeem — POST: validate phone + package; check pointsBalance >= pointsCostForPackage(priceKES); deduct pointsBalance only (lifetimePoints untouched); create Voucher (status unused, batchId LOYALTY-<ts>); create PointsTransaction (type redeem_voucher, points -pointsCost); return {voucher, pointsBalance, message}.
+  * /api/referrals — GET: all referrals ordered by createdAt desc, include referrer.name + referrer.phone (mapped into ReferralEntry with referrerName/referrerPhone extensions).
+  * /api/referrals/apply — POST: lookup customer by normalised phone (404); case-insensitive lookup of referrer by referralCode (emulated via findMany since SQLite doesn't support mode:insensitive); 400 if not found; 400 if self-referral; 400 if customer already has a Referral where referredCustomerId = id; create Referral (status pending, rewardPoints 0).
+  * /api/sms — GET: 50 broadcasts desc. POST: validate message + audience (all/active/by_site/by_package); require audienceFilter for by_site/by_package; compute recipientCount via shared computeAudience helper; create SmsBroadcast (status sent); return {broadcast, recipientCount, message}.
+  * /api/sms/audience-preview — POST: reuse computeAudience; return {recipientCount, sample} where sample is first 5 phones.
+  * /api/network — GET: for each HotspotSite, ensure a RouterStatus exists (create with default online values if missing); map to RouterHealth with siteName/location/maxUsers.
+  * /api/network/[siteId] — POST: refresh simulated metrics. Maintenance sites → offline/0; otherwise uptime += random(60..600), connectedDevices = activeSessions + random(0..8), status = warning if load ratio >= 0.85 else online, bandwidth/cpu/mem scaled by load. Upsert.
+  * /api/network/[siteId]/reboot — POST: upsert RouterStatus to {status online, uptime 0, devices 0, bandwidth 0, cpu 5, memory 20}; return {router, message}.
+  * /api/blacklist — GET: list desc. POST: normalise phone + validate; upsert (update reason if exists, else create); default reason "Blocked by administrator".
+  * /api/blacklist/[id] — DELETE: 404 if not found, else delete and return {success:true}.
+  * /api/subscriptions — GET: ordered by nextChargeAt asc, includes customer.name; optional ?status= filter (active/paused/cancelled).
+  * /api/subscriptions/create — POST: validate phone + package; check isBlacklisted (403); upsert customer; create Subscription (status active, nextChargeAt = now + durationMinutes).
+  * /api/subscriptions/[id] — PATCH: action pause/resume/cancel. pause → status paused. resume → status active + recompute nextChargeAt from package duration. cancel → status cancelled. 404 if not found.
+  * /api/subscriptions/process — POST: find all Subscription where status active AND nextChargeAt <= now. For each: create Transaction (mpesa, completed, mpesaRef via generateMpesaRef, amountKES = priceKES), create Session (tagged to a single active HotspotSite, fallback any site), awardPoints(customerId, priceKES, "earn_purchase", `Auto-renew: ${packageName}`), update sub.lastChargedAt + nextChargeAt = now + duration. Return {processed, revenue, message}.
+- After running `bun run db:push` to regenerate the Prisma client (the running system dev server was holding a stale client that didn't know about the new models — runtime errors like "Unknown argument `lifetimePoints`"), restarted the dev server so the new client was picked up.
+- Live curl-verified every new endpoint against the dev server — all return correct shapes (see /home/z/my-project/agent-ctx/11-a-full-stack-developer-backend.md for the full request matrix). Highlights:
+  * Loyalty PATCH on Mercy Cherono (platinum, 10726 pts) returned referralsCount=1, referralsCompleted=1 — confirms the bug fix.
+  * /api/mpesa/stk with a blacklisted phone returned 403 {"error":"This number is blocked. Contact support."} — confirms Step 2 wiring.
+  * /api/subscriptions/create → PATCH pause/resume/cancel cycled status correctly through paused → active (with new nextChargeAt) → cancelled.
+  * /api/network/[siteId] POST refreshed uptime/devices/bandwidth/cpu/mem with simulated metrics; /reboot zeroed everything except cpu=5/memory=20.
+  * /api/admin/stats returned activeSubscriptions:2, pointsCirculation:77373 — confirms Step 2 wiring.
+  * /api/referrals/apply with self-referral correctly returned 400 {"error":"You cannot refer yourself"}.
+  * /api/loyalty/redeem on a 0-point customer correctly returned 400 {"error":"Insufficient points","pointsBalance":0,"pointsCost":100}.
+- Ran `bun run lint` → exit 0 (clean).
+
+Stage Summary:
+- 14 new route files + 1 bug fix delivered. All match the contract.
+- Files created:
+  - src/app/api/loyalty/redeem/route.ts
+  - src/app/api/referrals/route.ts
+  - src/app/api/referrals/apply/route.ts
+  - src/app/api/sms/route.ts
+  - src/app/api/sms/audience-preview/route.ts
+  - src/app/api/network/route.ts
+  - src/app/api/network/[siteId]/route.ts
+  - src/app/api/network/[siteId]/reboot/route.ts
+  - src/app/api/blacklist/route.ts
+  - src/app/api/blacklist/[id]/route.ts
+  - src/app/api/subscriptions/route.ts
+  - src/app/api/subscriptions/create/route.ts
+  - src/app/api/subscriptions/[id]/route.ts
+  - src/app/api/subscriptions/process/route.ts
+- Files modified:
+  - src/app/api/loyalty/[customerId]/route.ts (referralsCompleted bug fix)
+- Confirmed already in place (no changes needed):
+  - src/lib/loyalty.ts (awardPoints, processReferralCompletion, isBlacklisted)
+  - src/app/api/mpesa/stk/route.ts (blacklist check)
+  - src/app/api/mpesa/status/[id]/route.ts (awardPoints + processReferralCompletion on completion)
+  - src/app/api/vouchers/redeem/route.ts (blacklist check + awardPoints + processReferralCompletion)
+  - src/app/api/admin/stats/route.ts (activeSubscriptions + pointsCirculation)
+- No new packages installed. No modifications to page.tsx, components/**, store.ts, schema.prisma, layout.tsx, globals.css, types.ts, wifi-utils.ts, db.ts.
+- Lint: clean (exit 0). Live curl tests: all pass.
+- Agent work record: /home/z/my-project/agent-ctx/11-a-full-stack-developer-backend.md
+- Frontend agent (11-b) can consume: GET/POST /api/loyalty/redeem, GET /api/referrals, POST /api/referrals/apply, GET/POST /api/sms, POST /api/sms/audience-preview, GET /api/network, POST /api/network/[siteId], POST /api/network/[siteId]/reboot, GET/POST /api/blacklist, DELETE /api/blacklist/[id], GET /api/subscriptions, POST /api/subscriptions/create, PATCH /api/subscriptions/[id], POST /api/subscriptions/process, plus existing GET /api/loyalty, GET/PATCH /api/loyalty/[customerId] (now with correct referralsCompleted).
+- IMPORTANT for the orchestrator: the running dev server was holding a stale Prisma client from before round 4. I had to kill it and restart so the new client (with Referral/PointsTransaction/SmsBroadcast/RouterStatus/Blacklist/Subscription + Customer.pointsBalance/lifetimePoints/tier/referralCode) was loaded. If the system process watchdog hasn't already restarted the dev server, it needs a one-time restart before any new route will work.

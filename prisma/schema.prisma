@@ -30,17 +30,26 @@ model Package {
 }
 
 model Customer {
-  id           String        @id @default(cuid())
-  phone        String        @unique
-  name         String?
-  email        String?
-  location     String?
-  otpCode      String?
-  otpExpires   DateTime?
-  createdAt    DateTime      @default(now())
-  sessions     Session[]
-  transactions Transaction[]
-  tickets      SupportTicket[]
+  id               String        @id @default(cuid())
+  phone            String        @unique
+  name             String?
+  email            String?
+  location         String?
+  otpCode          String?
+  otpExpires       DateTime?
+  // Loyalty & rewards
+  pointsBalance    Int           @default(0)
+  lifetimePoints   Int           @default(0)
+  tier             String        @default("bronze") // bronze, silver, gold, platinum
+  referralCode     String?       @unique
+  createdAt        DateTime      @default(now())
+  sessions         Session[]
+  transactions     Transaction[]
+  tickets          SupportTicket[]
+  pointsLedger     PointsTransaction[]
+  subscriptions    Subscription[]
+  referralsMade    Referral[]    @relation("Referrer")
+  referredBy       Referral[]    @relation("Referred")
 }
 
 model Session {
@@ -180,6 +189,7 @@ model HotspotSite {
   status      String    @default("active") // active, inactive, maintenance
   createdAt   DateTime  @default(now())
   sessions    Session[]
+  routerStatus RouterStatus?
 }
 
 // Broadcast announcements shown to customers on the portal.
@@ -203,4 +213,81 @@ model Feedback {
   rating    Int      // 1..5
   comment   String?
   createdAt DateTime @default(now())
+}
+
+// --- Round 4: Loyalty, referrals, SMS, network, blacklist, subscriptions ---
+
+// Referral: when a customer signs up using someone's referral code.
+model Referral {
+  id                 String    @id @default(cuid())
+  referrerCustomerId String
+  referrer           Customer  @relation("Referrer", fields: [referrerCustomerId], references: [id])
+  referredCustomerId String?   @unique
+  referred           Customer? @relation("Referred", fields: [referredCustomerId], references: [id])
+  referredPhone      String
+  status             String    @default("pending") // pending, completed
+  rewardPoints       Int       @default(0)
+  createdAt          DateTime  @default(now())
+  completedAt        DateTime?
+}
+
+// Points ledger — every earn / redeem event.
+model PointsTransaction {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  points     Int      // positive = earn, negative = redeem
+  type       String   // earn_purchase, earn_referral, redeem_voucher, admin_adjust
+  reason     String
+  referenceId String?
+  createdAt  DateTime @default(now())
+}
+
+// Bulk SMS broadcast (simulated sending).
+model SmsBroadcast {
+  id            String   @id @default(cuid())
+  message       String
+  audience      String   // all, active, by_site, by_package
+  audienceFilter String  // e.g. siteId or packageName or ""
+  recipientCount Int     @default(0)
+  status        String   @default("sent") // sent, scheduled
+  createdAt     DateTime @default(now())
+}
+
+// Live router health per hotspot site (simulated metrics).
+model RouterStatus {
+  id                String   @id @default(cuid())
+  siteId            String   @unique
+  site              HotspotSite @relation(fields: [siteId], references: [id])
+  status            String   @default("online") // online, warning, offline
+  uptimeSeconds     Int      @default(0)
+  connectedDevices  Int      @default(0)
+  bandwidthInMbps   Float    @default(0)
+  bandwidthOutMbps  Float    @default(0)
+  cpuUsage          Float    @default(0) // percentage
+  memoryUsage       Float    @default(0) // percentage
+  updatedAt         DateTime @default(now())
+}
+
+// Blacklisted phones — blocked from purchasing.
+model Blacklist {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+// Auto-renew subscriptions — recurring packages.
+model Subscription {
+  id            String    @id @default(cuid())
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  phone         String
+  packageId     String
+  packageName   String
+  priceKES      Int
+  status        String    @default("active") // active, paused, cancelled
+  nextChargeAt  DateTime
+  lastChargedAt DateTime?
+  createdAt     DateTime  @default(now())
 }

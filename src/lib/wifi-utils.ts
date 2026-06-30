@@ -169,3 +169,61 @@ export function formatNairobiDayLabel(date: Date = new Date()): string {
   const { day, monthIndex } = nairobiDateParts(date)
   return `${day} ${MONTH_ABBR[monthIndex]}`
 }
+
+// --- Loyalty & rewards helpers ---
+
+export const TIER_THRESHOLDS: { tier: string; min: number }[] = [
+  { tier: "bronze", min: 0 },
+  { tier: "silver", min: 500 },
+  { tier: "gold", min: 2000 },
+  { tier: "platinum", min: 5000 },
+]
+
+/** Determine the loyalty tier from lifetime points. */
+export function tierForPoints(pts: number): string {
+  let tier = "bronze"
+  for (const t of TIER_THRESHOLDS) {
+    if (pts >= t.min) tier = t.tier
+  }
+  return tier
+}
+
+/** The next tier above the given one, or null if already top. */
+export function nextTier(tier: string): string | null {
+  const idx = TIER_THRESHOLDS.findIndex((t) => t.tier === tier)
+  if (idx < 0 || idx >= TIER_THRESHOLDS.length - 1) return null
+  return TIER_THRESHOLDS[idx + 1].tier
+}
+
+/** Points remaining to reach the next tier from a given lifetime points total. */
+export function pointsToNextTier(lifetimePoints: number): {
+  nextTier: string | null
+  pointsToNextTier: number
+} {
+  const current = tierForPoints(lifetimePoints)
+  const nt = nextTier(current)
+  if (!nt) return { nextTier: null, pointsToNextTier: 0 }
+  const threshold = TIER_THRESHOLDS.find((t) => t.tier === nt)!.min
+  return { nextTier: nt, pointsToNextTier: Math.max(0, threshold - lifetimePoints) }
+}
+
+/** Points required to redeem a package voucher (10x the KES price). */
+export function pointsCostForPackage(priceKES: number): number {
+  return Math.max(50, priceKES * 10)
+}
+
+/** A readable tier label. */
+export function tierLabel(tier: string): string {
+  return tier.charAt(0).toUpperCase() + tier.slice(1)
+}
+
+/** Format uptime in seconds to a human string (e.g. "3d 4h"). */
+export function formatUptime(seconds: number): string {
+  if (seconds <= 0) return "—"
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}

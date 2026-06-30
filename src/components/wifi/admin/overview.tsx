@@ -16,9 +16,11 @@ import {
 } from "recharts"
 import {
   Activity,
+  CalendarClock,
   Megaphone,
   PieChart as PieChartIcon,
   Receipt,
+  Sparkles,
   Star,
   TrendingUp,
   Users,
@@ -179,6 +181,20 @@ export function AdminOverview() {
           label="Active announcements"
           value={stats?.activeAnnouncements ?? 0}
           icon={<Megaphone className="size-4" />}
+        />
+      </div>
+
+      {/* Round 4 — loyalty & subscriptions stats */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MiniStat
+          label="Active subscriptions"
+          value={stats?.activeSubscriptions ?? 0}
+          icon={<CalendarClock className="size-4" />}
+        />
+        <MiniStat
+          label="Points in circulation"
+          value={(stats?.pointsCirculation ?? 0).toLocaleString("en-KE")}
+          icon={<Sparkles className="size-4" />}
         />
       </div>
 

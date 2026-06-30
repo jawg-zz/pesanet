@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generateMpesaRef, generateFakeIP, generateFakeMAC } from "@/lib/wifi-utils";
+import { awardPoints, processReferralCompletion } from "@/lib/loyalty";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,31 @@ export async function GET(
             },
           });
           sessionId = session.id;
+        }
+      }
+
+      // Award loyalty points to the purchasing customer.
+      // The transaction.amountKES already reflects any promo/discount —
+      // that's the amount actually paid, so that's what we reward on.
+      if (updatedTx.customerId) {
+        try {
+          const points = updatedTx.amountKES;
+          if (points > 0) {
+            await awardPoints(
+              updatedTx.customerId,
+              points,
+              "earn_purchase",
+              `Purchase: ${updatedTx.packageName ?? "package"}`,
+              updatedTx.id
+            );
+          }
+          // Complete any pending referral for this customer (rewards referrer).
+          await processReferralCompletion(
+            updatedTx.customerId,
+            updatedTx.phone
+          );
+        } catch (e) {
+          console.error("Failed to award loyalty points:", e);
         }
       }
 

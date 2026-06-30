@@ -6,6 +6,7 @@ import {
   generateFakeIP,
   generateFakeMAC,
 } from "@/lib/wifi-utils";
+import { awardPoints, processReferralCompletion, isBlacklisted } from "@/lib/loyalty";
 import type { WifiSession } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,14 @@ export async function POST(req: Request) {
 
     const normalisedPhone = normaliseKePhone(String(phone));
     const codeUpper = String(code).toUpperCase();
+
+    // Block blacklisted phones from redeeming.
+    if (await isBlacklisted(normalisedPhone)) {
+      return NextResponse.json(
+        { error: "This number is blocked. Contact support." },
+        { status: 403 }
+      );
+    }
 
     const voucher = await db.voucher.findUnique({ where: { code: codeUpper } });
     if (!voucher) {
@@ -149,6 +158,25 @@ export async function POST(req: Request) {
 
     // silence unused var lint
     void transaction;
+
+    // Award loyalty points (same as M-Pesa: 1 pt / KES paid).
+    // Voucher redemptions use voucher.priceKES as the qualifying spend.
+    try {
+      const points = voucher.priceKES;
+      if (points > 0) {
+        await awardPoints(
+          customer.id,
+          points,
+          "earn_purchase",
+          `Purchase: ${voucher.packageName}`,
+          transaction.id
+        );
+      }
+      // Complete any pending referral for this customer.
+      await processReferralCompletion(customer.id, normalisedPhone);
+    } catch (e) {
+      console.error("Failed to award loyalty points on voucher redeem:", e);
+    }
 
     return NextResponse.json({
       success: true,

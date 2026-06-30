@@ -1,12 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import {
   Activity,
+  Award,
   Clock,
   Copy,
   Edit3,
+  Gift,
   KeyRound,
   LifeBuoy,
   Loader2,
@@ -17,8 +19,10 @@ import {
   Plus,
   Receipt,
   Send,
+  Share2,
   Smartphone,
   Sparkles,
+  TrendingUp,
   User,
   UserCircle,
   Wallet,
@@ -37,6 +41,8 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Select,
@@ -53,6 +59,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { StatusBadge } from "@/components/wifi/status-badge"
 import {
   CategoryBadge,
@@ -62,16 +76,23 @@ import {
 import { ActiveSessionCard } from "@/components/wifi/active-session-card"
 import type {
   CustomerAccount,
+  LoyaltySummary,
+  RedeemOption,
   SupportTicket,
+  WifiPackage,
   WifiSession,
 } from "@/lib/types"
 import {
   formatDateTime,
   formatKES,
+  pointsCostForPackage,
+  pointsToNextTier,
+  tierLabel,
   timeAgo,
   validateKePhone,
 } from "@/lib/wifi-utils"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 export function CustomerAccount() {
   const { toast } = useToast()
@@ -500,6 +521,12 @@ function CustomerDashboard({
           </div>
         </section>
       )}
+
+      {/* Loyalty & referrals */}
+      <section className="mt-6 grid gap-5 lg:grid-cols-2">
+        <LoyaltyCard phone={phone} />
+        <ReferralCard phone={phone} />
+      </section>
 
       {/* Profile + recent sessions */}
       <div className="mt-6 grid gap-5 lg:grid-cols-3">
@@ -1080,5 +1107,548 @@ function StatCard({
         </CardContent>
       </Card>
     </motion.div>
+  )
+}
+
+/* ============================================================
+   LOYALTY CARD
+============================================================ */
+function tierClasses(tier: string): string {
+  switch (tier) {
+    case "platinum":
+      return "border-transparent bg-gradient-to-r from-emerald-500/20 to-emerald-700/20 text-emerald-700 dark:text-emerald-300"
+    case "gold":
+      return "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300"
+    case "silver":
+      return "border-transparent bg-slate-500/15 text-slate-700 dark:text-slate-300"
+    default:
+      return "border-transparent bg-muted text-muted-foreground"
+  }
+}
+
+function LoyaltyCard({ phone }: { phone: string }) {
+  const { toast } = useToast()
+  const [summary, setSummary] = useState<LoyaltySummary | null>(null)
+  const [packages, setPackages] = useState<WifiPackage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [redeemOpen, setRedeemOpen] = useState(false)
+  const [redeemingId, setRedeemingId] = useState<string | null>(null)
+  const [lastVoucher, setLastVoucher] = useState<string | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/loyalty?limit=100")
+      if (!res.ok) throw new Error("Failed to load loyalty")
+      const data = await res.json()
+      const list = (data.loyalty ?? []) as LoyaltySummary[]
+      const me = list.find((m) => m.phone === phone) ?? null
+      setSummary(me)
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadPackages() {
+    try {
+      const res = await fetch("/api/packages?active=true")
+      if (!res.ok) return
+      const data = await res.json()
+      setPackages(data.packages ?? [])
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    load()
+    loadPackages()
+  }, [phone])
+
+  async function redeem(pkg: WifiPackage) {
+    setRedeemingId(pkg.id)
+    setLastVoucher(null)
+    try {
+      const res = await fetch("/api/loyalty/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, packageId: pkg.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || "Could not redeem points")
+      }
+      setLastVoucher(data.voucher?.code ?? null)
+      toast({
+        title: "Voucher issued 🎉",
+        description: `${pkg.name} redeemed successfully.`,
+      })
+      await load()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Redeem failed"
+      toast({
+        title: "Redeem failed",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      setRedeemingId(null)
+    }
+  }
+
+  const tierInfo = summary
+    ? pointsToNextTier(summary.lifetimePoints)
+    : null
+
+  const redeemOptions: RedeemOption[] = useMemo(() => {
+    if (!summary) return []
+    return packages.map((p) => {
+      const cost = pointsCostForPackage(p.priceKES)
+      return {
+        packageId: p.id,
+        packageName: p.name,
+        priceKES: p.priceKES,
+        pointsCost: cost,
+        affordable: summary.pointsBalance >= cost,
+      }
+    })
+  }, [packages, summary])
+
+  return (
+    <Card className="overflow-hidden py-0">
+      <div className="bg-gradient-to-r from-primary to-emerald-600 px-5 py-4 text-primary-foreground sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-lg bg-white/15">
+            <Award className="size-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold">Loyalty &amp; Rewards</h3>
+            <p className="text-xs text-primary-foreground/90">
+              Earn points on every purchase.
+            </p>
+          </div>
+        </div>
+      </div>
+      <CardContent className="flex flex-col gap-4 px-5 py-5 sm:px-6">
+        {loading ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-8 w-full rounded-lg" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+          </div>
+        ) : !summary ? (
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center">
+            <Award className="size-6 text-muted-foreground" />
+            <p className="text-sm font-medium">No loyalty profile yet</p>
+            <p className="text-xs text-muted-foreground">
+              Buy a package to start earning points.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Tier + balance */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Tier</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={cn("capitalize", tierClasses(summary.tier))}
+                  >
+                    {tierLabel(summary.tier)}
+                  </Badge>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Points balance</p>
+                <p className="mt-0.5 font-mono text-lg font-bold tabular-nums text-primary">
+                  {summary.pointsBalance.toLocaleString("en-KE")}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress to next tier */}
+            {tierInfo?.nextTier ? (
+              <div className="rounded-lg border p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <TrendingUp className="size-3" />
+                    Progress to{" "}
+                    <span className="font-semibold capitalize">
+                      {tierInfo.nextTier}
+                    </span>
+                  </span>
+                  <span className="font-mono">
+                    {tierInfo.pointsToNextTier.toLocaleString("en-KE")} pts to go
+                  </span>
+                </div>
+                <Progress
+                  className="mt-2 h-1.5"
+                  value={Math.min(
+                    100,
+                    Math.max(
+                      5,
+                      (summary.lifetimePoints /
+                        (summary.lifetimePoints +
+                          tierInfo.pointsToNextTier)) *
+                        100
+                    )
+                  )}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Lifetime:{" "}
+                  <span className="font-mono">
+                    {summary.lifetimePoints.toLocaleString("en-KE")} pts
+                  </span>
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                <p className="flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
+                  <Sparkles className="size-3.5" />
+                  You&apos;re at the top tier — Platinum!
+                </p>
+              </div>
+            )}
+
+            {/* Referral code */}
+            {summary.referralCode && (
+              <div className="flex items-center justify-between rounded-lg border bg-emerald-500/5 p-3">
+                <div className="flex items-center gap-2">
+                  <Gift className="size-4 text-primary" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Your referral code
+                    </p>
+                    <p className="font-mono text-sm font-semibold">
+                      {summary.referralCode}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(summary.referralCode!)
+                    toast({ title: "Code copied" })
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copy
+                </Button>
+              </div>
+            )}
+
+            <Button
+              onClick={() => {
+                setLastVoucher(null)
+                setRedeemOpen(true)
+              }}
+              disabled={redeemOptions.length === 0 || summary.pointsBalance < 50}
+            >
+              <Gift className="size-4" />
+              Redeem points
+            </Button>
+            {summary.pointsBalance < 50 && (
+              <p className="text-xs text-muted-foreground">
+                You need at least 50 points to redeem a voucher.
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+
+      {/* Redeem dialog */}
+      <Dialog open={redeemOpen} onOpenChange={setRedeemOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="size-4 text-primary" />
+              Redeem points for a voucher
+            </DialogTitle>
+            <DialogDescription>
+              Pick a package — points cost is 10× the KES price.
+            </DialogDescription>
+          </DialogHeader>
+          {lastVoucher ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <p className="font-semibold text-emerald-800 dark:text-emerald-200">
+                  Voucher issued!
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Your free package voucher code:
+              </p>
+              <p className="rounded-md border bg-card px-3 py-2 text-center font-mono text-lg font-bold tracking-widest">
+                {lastVoucher}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(lastVoucher)
+                    toast({ title: "Voucher copied" })
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copy
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setRedeemOpen(false)}
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto custom-scroll">
+              {redeemOptions.length === 0 ? (
+                <li className="rounded-lg border border-dashed bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
+                  No packages available to redeem.
+                </li>
+              ) : (
+                redeemOptions.map((opt) => (
+                  <li
+                    key={opt.packageId}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-lg border p-3",
+                      opt.affordable
+                        ? "border-emerald-500/30 bg-emerald-500/5"
+                        : "border-border bg-muted/30 opacity-70"
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {opt.packageName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatKES(opt.priceKES)} ·{" "}
+                        <span className="font-mono">
+                          {opt.pointsCost.toLocaleString("en-KE")} pts
+                        </span>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={!opt.affordable || redeemingId === opt.packageId}
+                      onClick={() => {
+                        const pkg = packages.find((p) => p.id === opt.packageId)
+                        if (pkg) redeem(pkg)
+                      }}
+                    >
+                      {redeemingId === opt.packageId ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Gift className="size-3.5" />
+                      )}
+                      Redeem
+                    </Button>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+          {!lastVoucher && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRedeemOpen(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+/* ============================================================
+   REFERRAL CARD
+============================================================ */
+function ReferralCard({ phone }: { phone: string }) {
+  const { toast } = useToast()
+  const [summary, setSummary] = useState<LoyaltySummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [code, setCode] = useState("")
+  const [applying, setApplying] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/loyalty?limit=100")
+      if (!res.ok) throw new Error("Failed to load")
+      const data = await res.json()
+      const list = (data.loyalty ?? []) as LoyaltySummary[]
+      setSummary(list.find((m) => m.phone === phone) ?? null)
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [phone])
+
+  async function apply(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = code.trim().toUpperCase()
+    if (!trimmed) {
+      toast({
+        title: "Enter a code",
+        description: "Paste a friend's referral code.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (summary?.referralCode && trimmed === summary.referralCode) {
+      toast({
+        title: "Cannot apply your own code",
+        description: "Share your code with friends instead!",
+        variant: "destructive",
+      })
+      return
+    }
+    setApplying(true)
+    try {
+      const res = await fetch("/api/referrals/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, referralCode: trimmed }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || "Could not apply referral code")
+      }
+      toast({
+        title: "Referral applied 🎉",
+        description:
+          data.message ||
+          "You'll receive bonus points after your first purchase.",
+      })
+      setCode("")
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Apply failed"
+      toast({
+        title: "Apply failed",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden py-0">
+      <div className="bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-4 text-white sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-lg bg-white/15">
+            <Share2 className="size-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold">Refer &amp; earn</h3>
+            <p className="text-xs text-white/90">
+              Get 100 bonus points per friend who buys.
+            </p>
+          </div>
+        </div>
+      </div>
+      <CardContent className="flex flex-col gap-4 px-5 py-5 sm:px-6">
+        {loading ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+          </div>
+        ) : !summary ? (
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-8 text-center">
+            <Share2 className="size-6 text-muted-foreground" />
+            <p className="text-sm font-medium">No referral code yet</p>
+            <p className="text-xs text-muted-foreground">
+              Buy a package to activate your referral code.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Referral code prominent */}
+            {summary.referralCode && (
+              <div className="flex items-center justify-between rounded-lg border-2 border-dashed border-emerald-500/40 bg-emerald-500/5 p-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Share your code
+                  </p>
+                  <p className="font-mono text-xl font-bold tracking-wide">
+                    {summary.referralCode}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(summary.referralCode!)
+                    toast({ title: "Referral code copied" })
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copy
+                </Button>
+              </div>
+            )}
+
+            {/* Referral stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border bg-muted/30 p-3 text-center">
+                <p className="text-xs text-muted-foreground">Referred</p>
+                <p className="mt-0.5 font-mono text-lg font-bold tabular-nums">
+                  {summary.referralsCount}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-center">
+                <p className="text-xs text-muted-foreground">Completed</p>
+                <p className="mt-0.5 font-mono text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {summary.referralsCompleted}
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Apply a code */}
+            <form onSubmit={apply} className="flex flex-col gap-2">
+              <Label htmlFor="ref-apply" className="text-xs">
+                Have a friend&apos;s code? Apply it here
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="ref-apply"
+                  placeholder="e.g. PESA-AB12"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  className="font-mono"
+                />
+                <Button type="submit" disabled={applying}>
+                  {applying ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  Apply
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Earn bonus points on your first purchase after applying.
+              </p>
+            </form>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

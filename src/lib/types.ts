@@ -77,6 +77,8 @@ export interface AdminStats {
   activeAnnouncements: number
   avgRating: number
   totalFeedback: number
+  activeSubscriptions: number
+  pointsCirculation: number
 }
 
 export interface RevenuePoint {
@@ -214,4 +216,91 @@ export interface AnalyticsData {
   peakHours: { hour: string; sessions: number }[]
   siteBreakdown: { siteName: string; sessions: number; revenue: number }[]
   ratingDistribution: { rating: number; count: number }[]
+}
+
+// --- Round 4 feature types ---
+
+export interface LoyaltySummary {
+  customerId: string
+  phone: string
+  name: string | null
+  pointsBalance: number
+  lifetimePoints: number
+  tier: string // bronze, silver, gold, platinum
+  referralCode: string | null
+  referralsCount: number
+  referralsCompleted: number
+  nextTier: string | null
+  pointsToNextTier: number
+}
+
+export interface PointsLedgerEntry {
+  id: string
+  points: number // + earn, - redeem
+  type: string // earn_purchase, earn_referral, redeem_voucher, admin_adjust
+  reason: string
+  createdAt: string
+}
+
+export interface ReferralEntry {
+  id: string
+  referredPhone: string
+  referredName: string | null
+  status: string // pending, completed
+  rewardPoints: number
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface RedeemOption {
+  packageId: string
+  packageName: string
+  priceKES: number
+  pointsCost: number
+  affordable: boolean
+}
+
+export interface SmsBroadcast {
+  id: string
+  message: string
+  audience: string
+  audienceFilter: string
+  recipientCount: number
+  status: string
+  createdAt: string
+}
+
+export interface RouterHealth {
+  id: string
+  siteId: string
+  siteName: string
+  location: string
+  status: string // online, warning, offline
+  uptimeSeconds: number
+  connectedDevices: number
+  maxUsers: number
+  bandwidthInMbps: number
+  bandwidthOutMbps: number
+  cpuUsage: number
+  memoryUsage: number
+  updatedAt: string
+}
+
+export interface BlacklistEntry {
+  id: string
+  phone: string
+  reason: string
+  createdAt: string
+}
+
+export interface SubscriptionEntry {
+  id: string
+  phone: string
+  packageName: string
+  priceKES: number
+  status: string // active, paused, cancelled
+  nextChargeAt: string
+  lastChargedAt: string | null
+  customerName: string | null
+  createdAt: string
 }

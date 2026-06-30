@@ -33,6 +33,8 @@ export async function GET() {
       activeAnnouncementsAgg,
       feedbackAgg,
       totalFeedbackAgg,
+      activeSubscriptionsAgg,
+      pointsAgg,
     ] = await Promise.all([
       db.session.count({ where: { status: "active" } }),
       db.session.findMany({
@@ -61,6 +63,10 @@ export async function GET() {
       // Average rating across all feedback (1..5)
       db.feedback.aggregate({ _avg: { rating: true } }),
       db.feedback.count(),
+      // Active auto-renew subscriptions
+      db.subscription.count({ where: { status: "active" } }),
+      // Total loyalty points in circulation (sum of all customers' pointsBalance)
+      db.customer.aggregate({ _sum: { pointsBalance: true } }),
     ]);
 
     const todayRevenue = todaySessionsRows
@@ -92,6 +98,8 @@ export async function GET() {
       activeAnnouncements: activeAnnouncementsAgg,
       avgRating,
       totalFeedback: totalFeedbackAgg,
+      activeSubscriptions: activeSubscriptionsAgg,
+      pointsCirculation: pointsAgg._sum.pointsBalance ?? 0,
     };
 
     return NextResponse.json(stats);

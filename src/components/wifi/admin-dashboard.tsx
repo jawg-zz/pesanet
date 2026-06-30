@@ -2,17 +2,23 @@
 
 import { useState } from "react"
 import {
+  Award,
+  Ban,
+  CalendarClock,
   FileBarChart,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
   Megaphone,
   Menu,
+  MessageSquare,
   Package as PackageIcon,
   Percent,
   RadioTower,
   Receipt,
+  Router,
   Settings,
+  Share2,
   ShieldCheck,
   Smartphone,
   Star,
@@ -41,6 +47,12 @@ import { SettingsManager } from "@/components/wifi/admin/settings-manager"
 import { SitesManager } from "@/components/wifi/admin/sites-manager"
 import { AnnouncementsManager } from "@/components/wifi/admin/announcements-manager"
 import { FeedbackManager } from "@/components/wifi/admin/feedback-manager"
+import { LoyaltyManager } from "@/components/wifi/admin/loyalty-manager"
+import { ReferralsManager } from "@/components/wifi/admin/referrals-manager"
+import { SmsManager } from "@/components/wifi/admin/sms-manager"
+import { NetworkManager } from "@/components/wifi/admin/network-manager"
+import { BlacklistManager } from "@/components/wifi/admin/blacklist-manager"
+import { SubscriptionsManager } from "@/components/wifi/admin/subscriptions-manager"
 import {
   Sheet,
   SheetContent,
@@ -49,7 +61,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "main" | "extensions" }[] = [
+const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "main" | "extensions" | "growth" }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" />, group: "main" },
   { id: "sessions", label: "Sessions", icon: <Wifi className="size-4" />, group: "main" },
   { id: "packages", label: "Packages", icon: <PackageIcon className="size-4" />, group: "main" },
@@ -63,6 +75,12 @@ const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "mai
   { id: "sites", label: "Hotspot Sites", icon: <RadioTower className="size-4" />, group: "extensions" },
   { id: "announcements", label: "Announcements", icon: <Megaphone className="size-4" />, group: "extensions" },
   { id: "feedback", label: "Feedback", icon: <Star className="size-4" />, group: "extensions" },
+  { id: "loyalty", label: "Loyalty", icon: <Award className="size-4" />, group: "growth" },
+  { id: "referrals", label: "Referrals", icon: <Share2 className="size-4" />, group: "growth" },
+  { id: "sms", label: "SMS Broadcasts", icon: <MessageSquare className="size-4" />, group: "growth" },
+  { id: "network", label: "Network Health", icon: <Router className="size-4" />, group: "growth" },
+  { id: "blacklist", label: "Blacklist", icon: <Ban className="size-4" />, group: "growth" },
+  { id: "subscriptions", label: "Subscriptions", icon: <CalendarClock className="size-4" />, group: "growth" },
   { id: "settings", label: "Settings", icon: <Settings className="size-4" />, group: "extensions" },
 ]
 
@@ -104,6 +122,18 @@ export function AdminDashboard() {
         return <AnnouncementsManager />
       case "feedback":
         return <FeedbackManager />
+      case "loyalty":
+        return <LoyaltyManager />
+      case "referrals":
+        return <ReferralsManager />
+      case "sms":
+        return <SmsManager />
+      case "network":
+        return <NetworkManager />
+      case "blacklist":
+        return <BlacklistManager />
+      case "subscriptions":
+        return <SubscriptionsManager />
       case "settings":
         return <SettingsManager />
       default:
@@ -140,6 +170,29 @@ export function AdminDashboard() {
         Extensions
       </div>
       {NAV.filter((n) => n.group === "extensions").map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => {
+            setAdminSection(item.id)
+            setMobileOpen(false)
+          }}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            adminSection === item.id
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          )}
+          aria-current={adminSection === item.id ? "page" : undefined}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+      <div className="mb-1 mt-3 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Growth &amp; Network
+      </div>
+      {NAV.filter((n) => n.group === "growth").map((item) => (
         <button
           key={item.id}
           type="button"
