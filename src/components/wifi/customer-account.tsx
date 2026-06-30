@@ -85,6 +85,7 @@ import type {
 import {
   formatDateTime,
   formatKES,
+  normaliseKePhone,
   pointsCostForPackage,
   pointsToNextTier,
   tierLabel,
@@ -1142,7 +1143,8 @@ function LoyaltyCard({ phone }: { phone: string }) {
       if (!res.ok) throw new Error("Failed to load loyalty")
       const data = await res.json()
       const list = (data.loyalty ?? []) as LoyaltySummary[]
-      const me = list.find((m) => m.phone === phone) ?? null
+      const normalised = normaliseKePhone(phone)
+      const me = list.find((m) => normaliseKePhone(m.phone) === normalised) ?? null
       setSummary(me)
     } catch {
       /* ignore */
@@ -1486,7 +1488,8 @@ function ReferralCard({ phone }: { phone: string }) {
       if (!res.ok) throw new Error("Failed to load")
       const data = await res.json()
       const list = (data.loyalty ?? []) as LoyaltySummary[]
-      setSummary(list.find((m) => m.phone === phone) ?? null)
+      const normalised = normaliseKePhone(phone)
+      setSummary(list.find((m) => normaliseKePhone(m.phone) === normalised) ?? null)
     } catch {
       /* ignore */
     } finally {

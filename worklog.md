@@ -489,3 +489,39 @@ Stage Summary:
 - Agent work record: /home/z/my-project/agent-ctx/11-a-full-stack-developer-backend.md
 - Frontend agent (11-b) can consume: GET/POST /api/loyalty/redeem, GET /api/referrals, POST /api/referrals/apply, GET/POST /api/sms, POST /api/sms/audience-preview, GET /api/network, POST /api/network/[siteId], POST /api/network/[siteId]/reboot, GET/POST /api/blacklist, DELETE /api/blacklist/[id], GET /api/subscriptions, POST /api/subscriptions/create, PATCH /api/subscriptions/[id], POST /api/subscriptions/process, plus existing GET /api/loyalty, GET/PATCH /api/loyalty/[customerId] (now with correct referralsCompleted).
 - IMPORTANT for the orchestrator: the running dev server was holding a stale Prisma client from before round 4. I had to kill it and restart so the new client (with Referral/PointsTransaction/SmsBroadcast/RouterStatus/Blacklist/Subscription + Customer.pointsBalance/lifetimePoints/tier/referralCode) was loaded. If the system process watchdog hasn't already restarted the dev server, it needs a one-time restart before any new route will work.
+
+---
+Task ID: 12
+Agent: main (orchestrator)
+Task: Round 4 — verification + bug fix (loyalty phone normalisation)
+
+Work Log:
+- Both subagent contracts (11-a backend, 11-b frontend) had been partially executed before context deadlines; discovered all 16 new backend routes + src/lib/loyalty.ts + 6 new frontend components + admin-dashboard wiring + overview/customer-account updates were already created by the prior partial run.
+- Fixed processReferralCompletion signature: helper accepts optional 2nd arg (_phone) for call-site compatibility (mpesa/status and vouchers/redeem call with 2 args).
+- Restarted dev server to pick up regenerated Prisma client (new models: Referral, PointsTransaction, SmsBroadcast, RouterStatus, Blacklist, Subscription).
+- Verified all v4 APIs return 200: /api/loyalty (17 members, top = Mercy Cherono platinum 10,726 pts), /api/referrals (3 completed, 300 pts rewarded), /api/network (4/5 online, 20 devices, 237 Mbps), /api/blacklist (2 entries), /api/subscriptions (2 active), /api/sms (1 broadcast to 16), /api/admin/stats (activeSubscriptions:2, pointsCirculation:77,373).
+- Agent Browser verification:
+  * Admin overview: new "GROWTH & NETWORK" sidebar group (Loyalty, Referrals, SMS Broadcasts, Network Health, Blacklist, Subscriptions) + new mini-stats "Active subscriptions 2" and "Points in circulation 77,373".
+  * Loyalty manager: 17 members, tier distribution (Bronze 5, Gold 4, Platinum 8), table with tiers/balances/referral codes.
+  * Network Health: 4/5 online, per-site uptime/devices/bandwidth/CPU/memory with Refresh+Reboot buttons.
+  * Subscriptions: 2 active, 1 due in 24h, KES 1,198 MRR, "Process due now" button works.
+  * SMS Broadcasts: composer with 160-char counter, audience selector, preview.
+  * Referrals: 3 completed, 300 pts given.
+  * Blacklist: 2 blocked numbers + add form.
+- BUG FOUND + FIXED: customer-account LoyaltyCard/ReferralCard compared m.phone === phone but phone was "0712345103" (as typed) while API returns "254712345103" (normalised) → loyalty card showed "No loyalty profile yet". Fixed by importing normaliseKePhone and comparing normalised values in both LoyaltyCard and ReferralCard.
+- Re-verified after fix: My Account for Mercy Cherono (0712345103) now shows Tier: Platinum, Points: 10,726, referral code MERC6859 (copyable).
+- Verified loyalty points earning: new purchase by 0712345682 (Quick 30, KES 10) → loyalty API confirms 10 points earned, bronze tier, 490 to silver.
+- Verified blacklist enforcement: POST /api/mpesa/stk with blacklisted number 0700000001 → 403 "This number is blocked. Contact support."
+- Customer portal: Loyalty & Rewards promo section present ("Earn 1 point per KES spent", "100 bonus points for every friend you refer").
+- Lint: clean (exit 0). Dev log: no runtime errors. No console errors.
+
+Stage Summary:
+- Round 4 COMPLETE and browser-verified. 6 new feature areas live:
+  1. Loyalty & Rewards Program (1 pt/KES, tiers bronze→platinum, points ledger, redeem for vouchers)
+  2. Referral Program (apply code → first purchase completes → referrer +100 pts)
+  3. Bulk SMS Broadcasts (audience targeting: all/active/by-site/by-package, 160-char composer, history)
+  4. Network Health Monitoring (per-router uptime/devices/bandwidth/CPU/memory, refresh+reboot, 15s auto-refresh)
+  5. Blacklist/Fraud Management (block phones from purchases+redemptions, 403 enforcement)
+  6. Auto-renew Subscriptions (create/pause/resume/cancel, process-due charges + awards points)
+- Points earning integrated into M-Pesa purchases, voucher redemptions, and subscription auto-renewals.
+- Admin sidebar now has 3 groups: MAIN, EXTENSIONS, GROWTH & NETWORK (20 total sections).
