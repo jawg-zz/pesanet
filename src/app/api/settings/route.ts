@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { BusinessSettings } from "@/lib/types";
+import { cacheThrough, cacheInvalidate } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const rows = await db.setting.findMany();
-    const settings: BusinessSettings = {};
-    for (const row of rows) {
-      settings[row.key] = row.value;
-    }
+    const settings = await cacheThrough(
+      "settings:all",
+      async () => {
+        const rows = await db.setting.findMany();
+        const s: BusinessSettings = {};
+        for (const row of rows) s[row.key] = row.value;
+        return s;
+      },
+      120_000 // settings change rarely — 2 min TTL
+    );
     return NextResponse.json({ settings });
   } catch (err) {
     console.error("GET /api/settings error:", err);
@@ -49,6 +55,9 @@ export async function PUT(req: Request) {
     for (const row of rows) {
       settings[row.key] = row.value;
     }
+
+    // Invalidate the cached settings.
+    cacheInvalidate("settings:all");
 
     return NextResponse.json({ settings });
   } catch (err) {

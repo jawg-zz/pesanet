@@ -24,6 +24,7 @@ export type AdminSection =
   | "network"
   | "blacklist"
   | "subscriptions"
+  | "scaling"
 
 interface AppState {
   view: AppView

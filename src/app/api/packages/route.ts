@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { WifiPackage } from "@/lib/types";
+import { cacheThrough, cacheInvalidatePrefix } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +26,14 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const activeOnly = searchParams.get("active");
 
-    const where = activeOnly === "true" ? { active: true } : undefined;
-    const packages = await db.package.findMany({
-      where,
-      orderBy: { priceKES: "asc" },
-    });
+    const cacheKey = `packages:${activeOnly ?? "all"}`;
+    const packages = await cacheThrough(cacheKey, async () => {
+      const where = activeOnly === "true" ? { active: true } : undefined;
+      return db.package.findMany({
+        where,
+        orderBy: { priceKES: "asc" },
+      });
+    }, 60_000);
 
     return NextResponse.json({ packages: packages.map(mapPackage) });
   } catch (err) {
@@ -79,6 +83,9 @@ export async function POST(req: Request) {
         popular: Boolean(popular),
       },
     });
+
+    // Invalidate the packages cache (both active-only and all).
+    cacheInvalidatePrefix("packages:");
 
     return NextResponse.json({ package: mapPackage(pkg) });
   } catch (err) {

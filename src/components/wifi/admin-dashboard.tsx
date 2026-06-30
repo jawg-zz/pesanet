@@ -6,6 +6,7 @@ import {
   Ban,
   CalendarClock,
   FileBarChart,
+  Gauge,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -53,6 +54,7 @@ import { SmsManager } from "@/components/wifi/admin/sms-manager"
 import { NetworkManager } from "@/components/wifi/admin/network-manager"
 import { BlacklistManager } from "@/components/wifi/admin/blacklist-manager"
 import { SubscriptionsManager } from "@/components/wifi/admin/subscriptions-manager"
+import { ScalingManager } from "@/components/wifi/admin/scaling-manager"
 import {
   Sheet,
   SheetContent,
@@ -81,6 +83,7 @@ const NAV: { id: AdminSection; label: string; icon: React.ReactNode; group: "mai
   { id: "network", label: "Network Health", icon: <Router className="size-4" />, group: "growth" },
   { id: "blacklist", label: "Blacklist", icon: <Ban className="size-4" />, group: "growth" },
   { id: "subscriptions", label: "Subscriptions", icon: <CalendarClock className="size-4" />, group: "growth" },
+  { id: "scaling", label: "Scaling", icon: <Gauge className="size-4" />, group: "growth" },
   { id: "settings", label: "Settings", icon: <Settings className="size-4" />, group: "extensions" },
 ]
 
@@ -134,6 +137,8 @@ export function AdminDashboard() {
         return <BlacklistManager />
       case "subscriptions":
         return <SubscriptionsManager />
+      case "scaling":
+        return <ScalingManager />
       case "settings":
         return <SettingsManager />
       default:

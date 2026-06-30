@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { validateKePhone, normaliseKePhone } from "@/lib/wifi-utils";
 import { isBlacklisted } from "@/lib/loyalty";
+import { checkPurchaseRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,24 @@ export async function POST(req: Request) {
     }
 
     const normalisedPhone = normaliseKePhone(String(phone));
+
+    // Rate limit: max 10 purchase attempts per phone per minute.
+    const rl = checkPurchaseRateLimit(normalisedPhone);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many attempts. Try again in ${Math.ceil(rl.resetInMs / 1000)}s.`,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.ceil(rl.resetInMs / 1000)),
+            "X-RateLimit-Limit": String(rl.limit),
+            "X-RateLimit-Remaining": "0",
+          },
+        }
+      );
+    }
 
     // Block blacklisted phones from purchasing.
     if (await isBlacklisted(normalisedPhone)) {
