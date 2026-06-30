@@ -39,9 +39,11 @@ COPY --from=builder /app/.next/standalone /app
 COPY --from=builder /app/.next/static /app/.next/static
 COPY --from=builder /app/public /app/public
 
-# Copy Prisma client + schema for runtime db:push
+# Copy Prisma CLI + client + schema for runtime db:push
 COPY --from=builder /app/node_modules/.prisma /app/node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma /app/node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma /app/node_modules/prisma
+COPY --from=builder /app/node_modules/.bin/prisma /app/node_modules/.bin/prisma
 COPY --from=builder /app/prisma ./prisma
 
 # Copy seed scripts for first-run seeding

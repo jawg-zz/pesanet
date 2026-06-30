@@ -7,7 +7,7 @@
 set -e
 
 echo "⏳ Running database schema sync..."
-bunx prisma db push --accept-data-loss 2>&1
+./node_modules/.bin/prisma db push --accept-data-loss 2>&1
 
 # Seed if the database has no packages (empty/fresh DB)
 PACKAGE_COUNT=$(bun -e "
