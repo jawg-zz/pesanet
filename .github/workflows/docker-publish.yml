@@ -28,6 +28,9 @@ jobs:
         id: image
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@5960ca9e05ebfeb96c1c3cb7a9fd1e4653b18b11  # v3.6.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
 
@@ -51,7 +54,7 @@ jobs:
         uses: docker/build-push-action@67a2d409c0a876cbe6b11854e3e25193efe4e62d  # v6.12.0
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
