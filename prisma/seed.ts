@@ -1,10 +1,29 @@
 import { PrismaClient } from "@prisma/client";
-import {
-  generateVoucherCode,
-  generateMpesaRef,
-  generateFakeIP,
-  generateFakeMAC,
-} from "../src/lib/wifi-utils";
+
+// Inlined helpers (src/lib/wifi-utils isn't available in standalone builds)
+function generateVoucherCode(): string {
+  const part = () => Math.floor(1000 + Math.random() * 9000).toString();
+  return `WFI-${part()}-${part()}`;
+}
+function generateMpesaRef(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
+  let ref = "";
+  for (let i = 0; i < 10; i++) ref += chars[Math.floor(Math.random() * chars.length)];
+  return ref;
+}
+function generateFakeIP(): string {
+  return `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${1 + Math.floor(Math.random() * 254)}`;
+}
+function generateFakeMAC(): string {
+  const hex = "0123456789ABCDEF";
+  const parts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    let part = "";
+    for (let j = 0; j < 2; j++) part += hex[Math.floor(Math.random() * 16)];
+    parts.push(part);
+  }
+  return parts.join(":");
+}
 
 const db = new PrismaClient();
 
